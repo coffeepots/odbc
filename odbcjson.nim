@@ -1,4 +1,4 @@
-import odbcfields, odbctypes, json, unicode
+import odbcfields, odbctypes, json, unicode, tables
 
 proc toJson*(data: SQLData): JsonNode =
   case data.kind:
@@ -25,14 +25,14 @@ proc toJson*(value: SQLValue): JsonNode =
   ## Convert an SQLValue to JSON using the json unit.
   result = newJObject()
   # Initialize empty sequence with expected field tuples.
-  var s: seq[tuple[key: string, val: JsonNode]] = @[]
+  var s = initTable[string, JsonNode]()
   # Add the fieldname tuple to the sequence of values.
-  s.add(("field", newJString(value.field.fieldname)))
+  s.add("field", newJString(value.field.fieldname))
   # Add the string field tuple to the sequence of values.
   try:
     #echo "* ", value.data.toJson
     # note: issue which crashes json: odbc converting to weird unicode?
-    s.add(("data", value.data.toJson))
+    s.add("data", value.data.toJson)
   except:
     let e = getCurrentException()
     if e != nil:
