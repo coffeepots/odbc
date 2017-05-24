@@ -1,4 +1,4 @@
-import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting, tables, locks
+import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting, tables
 
 type
   ODBCTransactionMode = enum tmAuto, tmManual
@@ -27,8 +27,7 @@ var
   defaultTimeout* = 30
   defaultReportingLevel* = rlErrorsAndInfo
   quitProcRegistered = false
-  activeConnectionsLock: Lock
-  activeConnections {.guard: activeConnectionsLock.} = initTable[SqlHDBC, ODBCConnection]()
+  activeConnections = initTable[SqlHDBC, ODBCConnection]()
 
 proc disconnect*(con: ODBCConnection) =
   if con.conHandle != nil:
@@ -36,15 +35,12 @@ proc disconnect*(con: ODBCConnection) =
       disconnect(con.conHandle, con.reporting)
       con.connected = false
     freeConHandle(con.conHandle, con.reporting)
-    activeConnectionsLock.acquire
-    {.locks: [activeConnectionsLock].}:
-      try:
-        if activeConnections.hasKey(con.conHandle):
-          activeConnections.del(con.conHandle)
-        when defined(odbcdebug): echo "Disconnected handle ", repr(con.conHandle)
-      finally:
-        activeConnectionsLock.release
+    activeConnections.withValue(con.conHandle, value):
+      activeConnections.del(value.conHandle)
+    when defined(odbcdebug): echo "Disconnected handle ", repr(con.conHandle)
     con.conHandle = nil
+
+proc close*(con: ODBCConnection) = con.disconnect
 
 proc freeConnection*(con: ODBCConnection) =
   con.disconnect
@@ -54,15 +50,9 @@ proc freeConnection*(con: ODBCConnection) =
 proc finaliseConnections {.noconv.} =
   # free up any connections
   when defined(odbcdebug): echo "Finalising connections..."
-  activeConnectionsLock.acquire
-  {.locks: [activeConnectionsLock].}:
-    try:
-      for pair in activeConnections.pairs:
-        when defined(odbcdebug): echo "freeing connection to: ", pair[1].host
-        pair[1].freeConnection
-    finally:
-      activeConnectionsLock.release
-  activeConnectionsLock.deinitLock
+  for pair in activeConnections.pairs:
+    when defined(odbcdebug): echo "freeing connection to: ", pair[1].host
+    pair[1].freeConnection
   when defined(odbcdebug): echo "Finalising connections done"
 
 proc newODBCConnection*(driver: string = "", host: string = "", database: string = ""): ODBCConnection =
@@ -84,7 +74,6 @@ proc newODBCConnection*(driver: string = "", host: string = "", database: string
   result.reporting.level = defaultReportingLevel
   result.reporting.destinations = {rdStore}
   if not quitProcRegistered:
-    activeConnectionsLock.initLock
     addQuitProc(finaliseConnections)
     quitProcRegistered = true
 
@@ -199,13 +188,8 @@ proc connect*(con: var ODBCConnection): bool =
   result = con.connected
 
   if con.connected:
-    {.locks: [activeConnectionsLock].}:
-      activeConnectionsLock.acquire
-      try:
-        activeConnections.add(con.conHandle, con)
-        when defined(odbcdebug): echo "Registered connection handle ", repr(con.conHandle)
-      finally:
-        activeConnectionsLock.release
+    activeConnections.add(con.conHandle, con)
+    when defined(odbcdebug): echo "Registered connection handle ", repr(con.conHandle)
   # Set timeout and handle transaction settings
   con.timeout = con.conTimeout
   con.transactionMode = con.transMode
