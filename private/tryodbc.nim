@@ -1,10 +1,10 @@
-import ../odbc.nim, wininifiles, times
+import ../odbc.nim, wininifiles, times, os
 
 var
   con = newODBCConnection()
   iniSettings: IniFile
-if not iniSettings.loadIni("DBConnect.ini"):
-  echo "Could not find ini file"
+if not iniSettings.loadIni(getCurrentDir().joinPath("DBConnect.ini")):
+  echo "Could not find ini file ", iniSettings.filename
   quit()
 
 # Here we load database properties from an inifile.
@@ -56,8 +56,8 @@ when testSimpleParams in tests:
   echo qry.statement, " a=", $qry.params["a"].data, " b=", $qry.params["b"].data, " c=", $qry.params["c"].data
   res = qry.executeFetch
   echo " result: ", res
-  assert(res[0][0].data.intVal == 5)
-  assert(res[0][1].data.intVal == 1)
+  assert(res[0][0].intVal == 5)
+  assert(res[0][1].intVal == 1)
 
 when testNulls in tests:
   qry.statement = "SELECT ?a"
@@ -74,20 +74,20 @@ when testInt64 in tests:
 
   qry.statement = "SELECT 4611686018427387904"
   res = qry.executeFetch
-  assert(res[0][0].data.floatVal == 4611686018427387904.0)
+  assert(res[0][0].floatVal == 4611686018427387904.0)
   echo " large int result native (float): ", qry.executeFetch
   qry.statement = "SELECT CAST(4611686018427387904 AS BigInt)"
   res = qry.executeFetch
-  assert(res[0][0].data.int64Val == 4611686018427387904)
+  assert(res[0][0].int64Val == 4611686018427387904)
   echo " large int as bigint: ", qry.executeFetch
   # Here, we specify a bigint directly (via type check in the param to int64).
   # This means we get an int64 back.
   import math
   qry.statement = "SELECT ?a"
-  qry.params["a"] = pow(2, 62).int64
+  qry.params["a"] = pow(2.float64, 62.float64)
   res = qry.executeFetch
-  echo " large int result as param: ", res
-  assert(res[0][0].data.int64Val == 4611686018427387904)
+  echo " large float result as param: ", res
+  assert(res[0][0].asFloat == 4611686018427387904.0)
 
 when testDuplicateParams in tests:
   echo "Duplicate parameters test:"
@@ -97,9 +97,9 @@ when testDuplicateParams in tests:
   echo " a=", $qry.params["a"].data
   res = qry.executeFetch
   echo " result: \n", res
-  assert(res[0][0].data.intVal == 10)
-  assert(res[0][1].data.intVal == 20)
-  assert(res[0][2].data.intVal == 100)
+  assert(res[0][0].intVal == 10)
+  assert(res[0][1].intVal == 20)
+  assert(res[0][2].intVal == 100)
 
 when testInsert in tests:
   qry.statement = """
@@ -169,14 +169,14 @@ when testDateTime in tests:
   echo qry.statement & " : "
   qry.withExecute(row):
     for item in row:
-      echo item.data
+      echo item
   qry.statement = "SELECT ?p"
   qry.params["p"] = getTime()
-  echo "t to i: ", getTime(), " i = ", timeToTimeInterval(getTime())
+  echo "t to i: ", getTime(), " i = ", toTimeInterval(getTime())
   echo qry.statement & " : "
   qry.withExecute(row):
     for item in row:
-      echo item.data
+      echo item
 
 when testUnicodeStrings in tests:
   echo "Strings test:"
@@ -238,7 +238,7 @@ when testFieldByName in tests:
   qry.withExecute(row):
     echo row
     var
-      data1 = row[0].data
+      data1 = row[0]
       # look up fieldname
       data2 = row[qry.fields("StrCol")]
     echo "d1 ", data1, " d2 ", data2
@@ -250,22 +250,22 @@ when testConversions in tests:
     qry.statement = "SELECT ?a"
     qry.params["a"] = inStr
     res = qry.executeFetch
-    echo " \"" & inStr & "\" as Binary: ", res[0][0].data.asBinary
+    echo " \"" & inStr & "\" as Binary: ", res[0][0].asBinary
     var inNum = 123456
     qry.params["a"] = inNum
     res = qry.executeFetch
-    echo " " & $inNum & " as Binary: ", res[0][0].data.asBinary
-    echo " " & $inNum & " as String: ", res[0][0].data.asString
-    echo " " & $inNum & " as Int: ", res[0][0].data.asInt
-    echo " " & $inNum & " as Int64: ", res[0][0].data.asInt64
-    echo " " & $inNum & " as Float: ", res[0][0].data.asFloat
+    echo " " & $inNum & " as Binary: ", res[0][0].asBinary
+    echo " " & $inNum & " as String: ", res[0][0].asString
+    echo " " & $inNum & " as Int: ", res[0][0].asInt
+    echo " " & $inNum & " as Int64: ", res[0][0].asInt64
+    echo " " & $inNum & " as Float: ", res[0][0].asFloat
     #
     inStr = "123456"
     qry.params["a"] = inStr
     res = qry.executeFetch
-    echo " \"" & inStr & "\" as int: ", res[0][0].data.asInt
-    echo " \"" & inStr & "\" as float: ", res[0][0].data.asFloat
-    echo " \"" & inStr & "\" as int64: ", res[0][0].data.asInt64
+    echo " \"" & inStr & "\" as int: ", res[0][0].asInt
+    echo " \"" & inStr & "\" as float: ", res[0][0].asFloat
+    echo " \"" & inStr & "\" as int64: ", res[0][0].asInt64
   testStuff()
 
 proc testDestructionProc: ODBCConnection =

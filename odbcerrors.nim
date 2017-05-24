@@ -5,6 +5,7 @@ type
   ODBCUnknownParameterException* = ref object of ODBCException
   ODBCUnsupportedTypeException* = ref object of ODBCException
   ODBCOverflowException* = ref object of ODBCException
+  ODBCFieldException* = ref object of ODBCException
 
 const
   msgUnsupportedType = "Unsupported type when setting value: "
@@ -14,6 +15,10 @@ proc newODBCException*(msg: string): ODBCException =
   result.msg = msg
 
 proc newODBCUnknownParameterException*(msg: string): ODBCUnknownParameterException =
+  new(result)
+  result.msg = msg
+
+proc newODBCUnknownFieldException*(msg: string): ODBCFieldException =
   new(result)
   result.msg = msg
 

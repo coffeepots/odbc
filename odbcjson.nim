@@ -25,7 +25,7 @@ proc toJson*(value: SQLValue): JsonNode =
   ## Convert an SQLValue to JSON using the json unit.
   result = newJObject()
   # Initialize empty sequence with expected field tuples.
-  var s = initTable[string, JsonNode]()
+  var s = initOrderedTable[string, JsonNode]()
   # Add the fieldname tuple to the sequence of values.
   s.add("field", newJString(value.field.fieldname))
   # Add the string field tuple to the sequence of values.
@@ -48,7 +48,7 @@ proc toJson*(row: SQLRow): JsonNode =
 
 proc toJson*(results: SQLResults): JsonNode =
   result = newJArray()
-  for idx, row in results:
+  for idx, row in results.rows:
     #echo "results row ", idx
     result.elems.add(row.toJson)
   #echo "final results ", result

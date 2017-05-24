@@ -1,4 +1,4 @@
-import odbcsql, odbctypes
+import odbcsql, odbctypes, tables, strutils, odbcerrors
 
 type
   SQLFieldObj = object
@@ -19,14 +19,42 @@ type
     field*: SQLField
     data*: SQLData
 
-  SQLRow* = seq[SQLValue]
-  SQLResults* = seq[SQLRow]
+  SQLRow* = seq[SQLData]
+  SQLResults* = object
+    fieldTable: Table[string, int]
+    rows*: seq[SQLRow]
+    curRow*: int
+
+proc `[]`*(results: SQLResults, index: int): SQLRow =
+  result = results.rows[index]
+
+proc add*(results: var SQLResults, row: SQLRow) =
+  results.rows.add(row)
+
+proc field*(results: var SQLResults, fieldName: string, rowIdx: int = -1): SQLData =
+  # table.withValue(key, value) do:
+  results.fieldTable.withValue(fieldName.toLowerAscii, fldIdx) do:
+    # value found
+    if rowIdx < 0:
+      result = results[results.curRow][fldIdx[]] 
+    else:
+      result = results[rowIdx][fldIdx[]]
+  do:
+    # fieldname not found
+    raise newODBCUnknownFieldException("Fieldname not found \"" & fieldName & "\"")
 
 proc initSQLRow*: SQLRow =
   result = @[]
 
 proc initSQLResults*: SQLResults =
-  result = @[]
+  result.rows = @[]
+  result.fieldTable = initTable[string, int]()
+
+proc next*(results: var SQLResults) =
+  if results.curRow < results.rows.len: results.curRow += 1
+
+proc prev*(results: var SQLResults) =
+  if results.curRow > 0: results.curRow -= 1
 
 proc newSQLField*(tablename: string = "", fieldname: string = ""): SQLField =
   new(result)
@@ -87,16 +115,10 @@ proc `$`*(sqlRow: SQLRow): string =
 
 proc `$`*(sqlResults: SQLResults): string =
   result = "["
-  for row in sqlResults:
+  for row in sqlResults.rows:
     result &= $row & "\n"
   result &= "]"
 
-from strutils import cmpIgnoreCase
-
-proc byFieldname*(row: SQLRow, fieldname: string): SQLData =
-  for item in row:
-    if item.field.fieldname.cmpIgnoreCase(fieldname) == 0:
-      result = item.data
-      break
+#from strutils import cmpIgnoreCase
 
 proc isNull*(sqlVal: SQLValue): bool = sqlVal.data.kind == dtNull

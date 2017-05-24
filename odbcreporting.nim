@@ -8,7 +8,7 @@ type
     destinations*: set[ODBCReportDestination]
     filename*: string
     messages*: seq[string]
-    callBack*: proc(msg: string)
+    callBack*: proc(msg: string) {.gcsafe.}
     displayHandles*: bool
 
 proc newODBCReportState*: ODBCReportState =

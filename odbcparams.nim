@@ -1,4 +1,4 @@
-import odbcsql, odbctypes, tables, strutils, odbcerrors, times, unicode
+import odbcsql, odbctypes, tables, strutils, odbcerrors, times, unicode, odbcreporting
 include odbcfields
 from math import round
 
@@ -15,6 +15,8 @@ type
   Utf16ArrayUC = ptr UncheckedArray[Utf16Char]
 
   SQLParam* = SQLValue
+  #    paramDir: SQLParamDirection
+
   ParamBuffer* = pointer
   ParamIndBuf* = TSqlInteger
 
@@ -24,8 +26,6 @@ type
     names: Table[string, int]     # for looking up parameter names in O(1)
     paramBuf: seq[ParamBuffer]    # buffer for data
     paramIndBuf: seq[ParamIndBuf] # buffer for ind
-
-var paramPrefix* = "?"
 
 proc initParams*: SQLParams =
   result.items = @[]
@@ -58,7 +58,7 @@ proc `[]=`*(params: var SQLParams, index: int, value: SQLParam) =
   params.items[index] = value
 
 proc `[]`*(params: SQLParams, name: string): SQLParam =
-  let nameLower = name.toLower
+  let nameLower = toLowerAscii(name)
   if params.names.hasKey(nameLower): result = params.items[params.names[nameLower]]
   else:
     raise newODBCUnknownParameterException("parameter \"" & $name & "\" not found in statement")
@@ -67,7 +67,7 @@ proc `[]=`*(params: var SQLParams, name: string, value: SQLParam) =
   # for some reason this needs to be * exported to be used below.
   # changing to a non `` name solved the problem like so:
   # proc setByName(params: var SQLParams, name: string, value: SQLParam) =
-  var nameLower = name.toLower
+  var nameLower = toLowerAscii(name)
   when defined(odbcdebug): echo "Setting param: ", value
   if params.names.hasKey(nameLower):
     when defined(odbcdebug): echo " Has key, setting value for index ", params.names[nameLower]
@@ -79,7 +79,7 @@ proc `[]=`*(params: var SQLParams, name: string, value: SQLParam) =
 proc `[]=`*(params: var SQLParams, index: string, data: int|int64|string|bool|float|Time|SQLBinaryData) =
   # have to determine the column details for this type
   let
-    paramName = index.toLower
+    paramName = toLowerAscii(index)
 
   if not params.names.hasKey(paramName):
     raise newODBCUnknownParameterException("parameter \"" & $index & "\" not found in statement")
@@ -100,7 +100,7 @@ proc clear*(params: var SQLParams) =
 proc clear*(params: var SQLParams, index: string) =
   # look up param
   let
-    paramName = index.toLower
+    paramName = toLowerAscii(index)
 
   if not params.names.hasKey(paramName):
     raise newODBCUnknownParameterException("parameter \"" & $index & "\" not found in statement")
@@ -159,7 +159,7 @@ proc readFromBuf(dataItem: var SQLData, buffer: ParamBuffer, indicator: int) =
   of dtTime:
     var
       timestamp = cast[ptr SQL_TIMESTAMP_STRUCT](buffer)
-      ms = round(timestamp.Fraction / 1000)  # fraction is in nanoseconds, interval uses milliseconds
+      ms = round(timestamp.Fraction / 1000).int  # fraction is in nanoseconds, interval uses milliseconds
     dataItem.timeVal = initInterval(ms, timestamp.Second, timestamp.Minute, timestamp.Hour,
         timestamp.Day, timestamp.Month, timestamp.Year)
   when defined(odbcdebug):
@@ -303,7 +303,7 @@ proc readAlphaNumeric(text: string, position: var int): string =
     result.add(text[position])
     position += 1
 
-proc setupParams(params: var SQLParams, sqlStatement: string, paramPrefix: string = paramPrefix) =
+proc setupParams(params: var SQLParams, sqlStatement: string, paramPrefix: string = "?") =
   # find all "?name" variables (where ? is paramPrefix) and construct parameters for them
   var
     start = 0
@@ -317,7 +317,7 @@ proc setupParams(params: var SQLParams, sqlStatement: string, paramPrefix: strin
     # found prefix, try to add to params
     p += paramPrefix.len  # don't include prefix in param name
 
-    paramName = sqlStatement.readAlphaNumeric(p).toLower
+    paramName = toLowerAscii(sqlStatement.readAlphaNumeric(p))
 
     # check for existing parameter with this name
     if not params.names.hasKey(paramName):
@@ -340,7 +340,7 @@ proc setupParams(params: var SQLParams, sqlStatement: string, paramPrefix: strin
   # allocate space for above buffers, to be filled when params are bound (on execute/open)
   params.allocateBuffers
 
-proc odbcParamStatement(sqlStatement: string, paramPrefix: string = paramPrefix): string =
+proc odbcParamStatement(sqlStatement: string, paramPrefix: string = "?"): string =
   # returns a string where parameters are replaced with "?"
   var
     start = 0

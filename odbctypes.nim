@@ -184,7 +184,7 @@ proc initSQLData*[T](inputData: T): SQLData =
     result.floatVal = inputData
   elif T is Time:
     result.kind = dtTime
-    result.timeVal = inputData.timeToTimeInterval
+    result.timeVal = inputData.toTimeInterval
   elif T is SQLBinaryData:
     result.kind = dtBinary
     result.binVal = inputData

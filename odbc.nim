@@ -88,13 +88,13 @@ proc columnCount*(qry: SQLQuery): int =
   rptOnErr(qry.con.reporting, SQLNumResultCols(qry.handle, r), "Get Column Count", qry.handle)
   result = r
 
-proc `fields`*(qry: SQLQuery, fieldname: string): int =
+proc fields*(qry: SQLQuery, fieldname: string): int =
   ## Accessor for getting the column index of a field by name.
   ## This is accessible after the query has been opened and is performed as a hash table lookup.
-  let fieldLower = fieldname.toLower
+  let fieldLower = toLowerAscii(fieldname)
   if qry.fieldIdxs.hasKey(fieldLower): result = qry.fieldIdxs[fieldLower]
   else:
-    raise newODBCUnknownParameterException("field \"" & $fieldlower & "\" not found in results")
+    raise newODBCUnknownFieldException("field \"" & $fieldlower & "\" not found in results")
 
 proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
   ## Fetch a single row from an opened query.
@@ -157,19 +157,16 @@ proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
       else:
         if indicator != SQL_NULL_DATA:
           if res.sqlSucceeded:
-            var curValue = initSQLValue(colDetail.colType.toDataType)
+            var curData = initSQLData(colDetail.colType.toDataType)
             # read data for current row
-            curValue.data.readFromBuf(qry.dataBuf, indicator)
-            # TODO: Rather than create a new field for every value, store column fields in qry and use reference
-            curValue.field = newSQLField()
+            curData.readFromBuf(qry.dataBuf, indicator)
             # we cannot know the tablename unfortunately
-            curValue.field.addDetails(colDetail)
-            row.add(curValue)
+            row.add(curData)
 
 proc fetch*(qry: SQLQuery): SQLResults =
   ## Return all rows to results
   result = initSQLResults()
-
+  result.fieldTable = qry.fieldIdxs
   var newRow = initSQLRow()
   while qry.fetchRow(newRow):
     result.add(newRow)
@@ -247,7 +244,7 @@ proc setupColumns(qry: var SQLQuery) =
 
   # set up hash table of field names -> rows
   for idx, col in qry.colDetails:
-    qry.fieldIdxs[col.name.toLower] = idx
+    qry.fieldIdxs[toLowerAscii(col.name)] = idx
 
 proc opened*(qry: SQLQuery): bool = qry.opened
 
@@ -301,12 +298,12 @@ proc execute*(qry: var SQLQuery) =
   finally:
     qry.close
 
-template withExecute*(qry: SQLQuery, row: stmt, actions: stmt) {.immediate.} =
+template withExecute*(qry: SQLQuery, row, actions: untyped) =
   ## Execute query and perform block for each row returned.
   ## Query is automatically closed after the last row is read.
   qry.open
   try:
-    var row: SQLRow
+    var row {.inject.}: SQLRow
     while qry.fetchRow(row):
       actions
   finally:
