@@ -9,6 +9,7 @@ const
 # The Unicode driver must accept the SQL_CHAR data.
 
 type
+  FieldIdxs* = Table[string, int]  # this allows linking fieldname with index into field columns
   SQLDataType* = enum dtNull, dtString, dtInt, dtInt64, dtBool, dtFloat, dtTime, dtBinary
 
   SQLColType* = enum ctUnknown, ctFixedStr, ctString, ctUnicodeFixedStr, ctUnicodeStr, ctDecimal,
@@ -28,6 +29,10 @@ type
     of dtFloat: floatVal*: float  # NOTE: C's float is float32, Nim's is equiv to C's double
     of dtTime: timeVal*: TimeInterval
     of dtBinary: binVal*: SQLBinaryData
+
+  SQLRow* = seq[SQLData]
+
+proc initFieldIdxs*: FieldIdxs = initTable[string, int]()
 
 proc toSQLDataType*(t: typeDesc): SQLDataType =
   # convert type to datatype
@@ -51,7 +56,7 @@ proc toSQLColumnType*(t: typeDesc): SQLColType =
   elif t is int64: result = ctBigInt
   elif t is bool: result = ctBit
   elif t is float: result = ctFloat
-  elif t is Time: result = ctTime
+  elif t is Time or t is TimeInterval: result = ctTime
   elif t is SQLBinaryData: result = ctBinary
   else:
     result = ctUnknown
@@ -131,7 +136,7 @@ proc toCType*(t: typeDesc): TSqlSmallInt =
   elif t is int64: result = SQL_C_SBIGINT
   elif t is bool: result = SQL_C_BIT
   elif t is float: result = SQL_C_DOUBLE
-  elif t is Time: result = SQL_C_TYPE_TIMESTAMP
+  elif t is Time or t is TimeInterval: result = SQL_C_TYPE_TIMESTAMP
   elif t is SQLBinaryData: result = SQL_C_BINARY
   else:
     result = SQL_TYPE_NULL
@@ -143,7 +148,7 @@ proc toRawSQLType*(t: typeDesc): TSqlSmallInt =
   elif t is int64: result = SQL_BIGINT
   elif t is bool: result = SQL_BIT
   elif t is float: result = SQL_FLOAT
-  elif t is Time: result = SQL_TYPE_TIMESTAMP
+  elif t is Time or t is TimeInterval: result = SQL_TYPE_TIMESTAMP
   elif t is SQLBinaryData: result = SQL_BINARY
   else:
     result = SQL_UNKNOWN_TYPE
@@ -182,6 +187,9 @@ proc initSQLData*[T](inputData: T): SQLData =
   elif T is float:
     result.kind = dtFloat
     result.floatVal = inputData
+  elif T is TimeInterval:
+    result.kind = dtTime
+    result.timeVal = inputData
   elif T is Time:
     result.kind = dtTime
     result.timeVal = inputData.toTimeInterval
@@ -246,8 +254,8 @@ proc asInt64*(sqlData: SQLData): int64 =
     result = sqlData.int64Val
   of dtBool: result = if sqlData.boolVal: 1 else: 0
   of dtFloat: result = sqlData.floatVal.int64
-  of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to int")
-  of dtBinary: raise newODBCException("cannot transform binary to int")
+  of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to int64")
+  of dtBinary: raise newODBCException("cannot transform binary to int64")
 
 proc asFloat*(sqlData: SQLData): float =
   case sqlData.kind
@@ -276,7 +284,7 @@ proc asBool*(sqlData: SQLData): bool =
   of dtInt64: result = sqlData.int64Val != 0
   of dtBool: result = sqlData.boolVal
   of dtFloat: result = sqlData.floatVal != 0.0
-  of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to int")
+  of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to bool")
   of dtBinary: raise newODBCException("cannot transform binary to int")
 
 proc asString*(sqlData: SQLData): string =
@@ -299,20 +307,36 @@ proc asBinary*(sqlData: SQLData): SQLBinaryData =
     for c in cs:
       result.add(c.byte)
   of dtInt:
-    var buf = cast[array[0..int.sizeOf, byte]](sqlData.intVal)
+    var buf = cast[array[int.sizeOf, byte]](sqlData.intVal)
     for b in buf:
       result.add(b)
   of dtInt64:
-    var buf = cast[array[0..int64.sizeOf, byte]](sqlData.int64Val)
+    var buf = cast[array[int64.sizeOf, byte]](sqlData.int64Val)
     for b in buf:
       result.add(b)
   of dtBool: result.add(sqlData.boolVal.byte)
   of dtFloat:
-    var buf = cast[array[0..float.sizeOf, byte]](sqlData.floatVal)
+    var buf = cast[array[float.sizeOf, byte]](sqlData.floatVal)
     for b in buf:
       result.add(b)
   of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to binary")
   of dtBinary:
     for b in sqlData.binVal: result.add(b)
 
+proc asTimeInterval*(sqlData: SQLData): TimeInterval =
+  if sqlData.kind == dtTime: result = sqlData.timeVal
+  else: raise newODBCException("cannot transform " & $sqlData.kind & " to time")
+
 proc isNull*(sqlData: SQLData): bool = sqlData.kind == dtNull
+
+converter toBinary*(sqlData: SQLData): SQLBinaryData = sqlData.asBinary
+converter toString*(sqlData: SQLData): string = sqlData.asString
+converter toFloat*(sqlData: SQLData): float = sqlData.asFloat
+converter toBool*(sqlData: SQLData): bool = sqlData.asBool
+converter toInt*(sqlData: SQLData): int = sqlData.asInt
+converter toInt64*(sqlData: SQLData): int64 = sqlData.asInt64
+converter toTimeInterval*(sqlData: SQLData): TimeInterval = sqlData.asTimeInterval
+
+proc `$`*(handle: SqlHStmt): string = handle.repr
+
+
