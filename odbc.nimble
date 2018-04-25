@@ -1,9 +1,12 @@
 # Package
-name          = "odbc"
-version       = "0.1.0"
+version       = "0.1.1"
 author        = "coffeepots"
 description   = "ODBC library around the odbcsql wrapper"
 license       = "MIT"
 
 # Deps
-Requires: "nim >= 0.13.0"
+requires: "nim >= 0.13.0"
+
+# Tests
+task test, "Runs odbc test suite":
+  exec "nim c -r tests/all"
