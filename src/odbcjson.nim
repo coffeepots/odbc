@@ -47,15 +47,11 @@ proc toJson*(row: SQLRow): JsonNode =
     result.elems.add(dataItem.toJson)
 
 proc toJson*(results: SQLResults): JsonNode =
-  var fields = initTable[int,string]()
   result = newJArray()
-  for k,v in results.fieldTable:
-    fields.add(v,k)
   for row in results.rows:
     var js = %*{}
     for idx,fld in row:
-      js.add(fields[idx],fld.toJson())
+      js.add(results.fields(idx).fieldname,fld.toJson())
     result.add(js)
-
 
 
