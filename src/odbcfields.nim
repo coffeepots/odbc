@@ -12,6 +12,7 @@ type
     size*: int
     digits*: int
     nullable*: bool
+    colIndex: int # Only used for results, allows quick data lookup directly from field
 
   SQLField* = ref SQLFieldObj
 
@@ -19,9 +20,10 @@ type
     field*: SQLField
     data*: SQLData
 
-  SQLRow* = seq[SQLData]
   SQLResults* = object
-    fieldTable*: Table[string, int]
+    fieldnameIndex: FieldIdxs
+    colFields: seq[SQLField]
+    fieldNames: Table[string, int]
     rows*: seq[SQLRow]
     curRow*: int
 
@@ -31,24 +33,46 @@ proc `[]`*(results: SQLResults, index: int): SQLRow =
 proc add*(results: var SQLResults, row: SQLRow) =
   results.rows.add(row)
 
-proc field*(results: var SQLResults, fieldName: string, rowIdx: int = -1): SQLData =
+proc fields*(results: SQLResults, index: int): SQLField = results.colFields[index]
+
+proc len*(results: SQLResults): int = results.rows.len
+
+proc fromField*(results: SQLResults, name: string, rowIdx = -1): SQLData =
+  let idx = results.fieldnames[name]
+  if rowIdx == -1:
+    result = results.rows[results.curRow][idx]
+  else:
+    result = results.rows[rowIdx][idx]
+    
+proc index*(results: SQLResults, name: string): int =
+  result = results.fieldnames[name]
+
+proc data*(results: var SQLResults, fieldName: string, rowIdx: int = -1): SQLData =
   # table.withValue(key, value) do:
-  results.fieldTable.withValue(fieldName.toLowerAscii, fldIdx) do:
+  results.fieldnameIndex.withValue(fieldName.toLowerAscii, fldIdx) do:
     # value found
     if rowIdx < 0:
-      result = results[results.curRow][fldIdx[]]
+      result = results[results.curRow][fldIdx[]] 
     else:
       result = results[rowIdx][fldIdx[]]
   do:
     # fieldname not found
     raise newODBCUnknownFieldException("Fieldname not found \"" & fieldName & "\"")
 
+proc data*(results: var SQLResults, field: SQLField): SQLData =
+  result = results[results.curRow][field.colIndex] 
+
+proc data*(results: var SQLResults, field: SQLField, rowIndex: int): SQLData =
+  result = results[rowIndex][field.colIndex] 
+    
 proc initSQLRow*: SQLRow =
   result = @[]
 
 proc initSQLResults*: SQLResults =
   result.rows = @[]
-  result.fieldTable = initTable[string, int]()
+  result.colFields = @[]
+  result.fieldNames = initTable[string, int]()
+  result.fieldnameIndex = initFieldIdxs()
 
 proc next*(results: var SQLResults) =
   if results.curRow < results.rows.len: results.curRow += 1
@@ -56,12 +80,13 @@ proc next*(results: var SQLResults) =
 proc prev*(results: var SQLResults) =
   if results.curRow > 0: results.curRow -= 1
 
-proc newSQLField*(tablename: string = "", fieldname: string = ""): SQLField =
+proc newSQLField*(tablename: string = "", fieldname: string = "", colIndex = 0): SQLField =
   new(result)
   result.tablename = tablename
   result.fieldname = fieldname
   # set field type to default
   result.cType = SQL_C_DEFAULT
+  result.colIndex = colIndex
 
 proc setType*[T](field: var SQLField, data: T) =
   field.colType = toSQLColumnType(T)
@@ -75,6 +100,7 @@ proc setType*[T](field: var SQLField, data: T) =
 
 proc initSQLValue*(dataType: SQLDataType): SQLValue =
   result.field = newSQLField()
+  result.field.dataType = dataType
   result.data = initSQLData(dataType)
 
 proc `$`*(field: SQLField): string =
@@ -110,13 +136,14 @@ proc `$`*(sqlRow: SQLRow): string =
   result = "["
   for idx, item in sqlRow:
     result &= $item
-    if idx < sqlRow.len - 1: result &= "\n"
+    if idx < sqlRow.high: result &= ",\n"
   result &= "]"
 
 proc `$`*(sqlResults: SQLResults): string =
   result = "["
-  for row in sqlResults.rows:
-    result &= $row & "\n"
+  for idx, row in sqlResults.rows:
+    result &= $row
+    if idx < sqlResults.rows.high: result &= ",\n"
   result &= "]"
 
 #from strutils import cmpIgnoreCase
