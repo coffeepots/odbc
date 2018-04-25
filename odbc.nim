@@ -15,9 +15,7 @@ import
   hashes,
   tables,
   typetraits,
-  src/odbctypes,
-  src/odbcerrors,
-  src/odbcreporting
+  src / [odbctypes, odbcerrors, odbcreporting]
 
 export odbctypes, odbcreporting
 
