@@ -8,36 +8,28 @@
 # or text data. Note that it is possible to use both functions in one query, so it may make
 # sense to SQLBindCol simple types and SQLGetData larger, variable types in future.
 
-import odbcsql, strutils, times, hashes, odbctypes, typetraits, tables, odbcerrors, odbcreporting
+import
+  odbcsql,
+  strutils,
+  times,
+  hashes,
+  tables,
+  typetraits,
+  src/odbctypes,
+  src/odbcerrors,
+  src/odbcreporting
 
 export odbctypes, odbcreporting
 
 # this import includes the handles module and also imports odbcerrors
-include odbcconnections, odbchandles, odbcparams, odbcjson, odbcutils
+include
+  src/odbcconnections,
+  src/odbchandles,
+  src/odbcparams,
+  src/odbcjson,
+  src/odbcutils
 
 type
-  SQLColDetails* = object
-    name*: string
-    colType*: SQLColType
-    sqlDataType*: TSqlSmallInt
-    cType: TSqlSmallInt
-    size*: int
-    digits*: int
-    nullable*: bool
-
-proc addDetails(field: var SQLField, dets: SQLColDetails) =
-  field.colType = dets.colType
-  field.dataType = dets.colType.toDataType
-  field.rawSqlType = dets.sqlDataType
-  field.cType = dets.cType
-  field.size = dets.size
-  field.digits = dets.digits
-  field.nullable = dets.nullable
-  field.fieldname = dets.name
-
-type
-  FieldIdxs = Table[string, int]
-
   SQLQueryObj* = object
     handle: SqlHStmt
     # statement is handled by a property getter/setter as setting the statement
@@ -47,12 +39,11 @@ type
     # odbcStatement is set up when the statement is set
     odbcStatement: string
     # metadata for result columns
-    colDetails: seq[SQLColDetails]
+    colFields: seq[SQLField]
     # dataBuf is the default buffer for reading data from ODBC for processing
     dataBuf: pointer
     # only accessible with read proc
     opened: bool
-
     con*: ODBCConnection
     # int indexed seq
     params*: SQLParams
@@ -76,9 +67,9 @@ proc newQuery*(con: ODBCConnection): SQLQuery =
   new(result, freeQuery)
   result.con = con
   result.params = initParams()
-  result.colDetails = @[]
+  result.colFields = @[]
   result.prepare = true
-  result.fieldIdxs = initTable[string, int]()
+  result.fieldIdxs = initFieldIdxs()
 
 # read only access to statement handle
 proc statementHandle*(qry: SQLQuery): SqlHStmt = qry.handle
@@ -88,7 +79,23 @@ proc columnCount*(qry: SQLQuery): int =
   rptOnErr(qry.con.reporting, SQLNumResultCols(qry.handle, r), "Get Column Count", qry.handle)
   result = r
 
-proc fields*(qry: SQLQuery, fieldname: string): int =
+proc fields*(qry: SQLQuery, fieldname: string): SQLField =
+  ## Accessor for getting the column index of a field by name.
+  ## This is accessible after the query has been opened and is performed as a hash table lookup.
+  let fieldLower = toLowerAscii(fieldname)
+  if qry.fieldIdxs.hasKey(fieldLower): result = qry.colFields[qry.fieldIdxs[fieldLower]]
+  else:
+    raise newODBCUnknownFieldException("field \"" & $fieldlower & "\" not found in results")
+
+proc fields*(qry: SQLQuery, idx: int): SQLField =
+  ## Accessor for getting the column index of a field by name.
+  ## This is accessible after the query has been opened and is performed as a hash table lookup.
+  if idx < qry.colFields.len: 
+    result = qry.colFields[idx]
+  else:
+    raise newODBCUnknownFieldException("field \"" & $idx & "\" out of range")
+
+proc fieldIndex*(qry: SQLQuery, fieldname: string): int =
   ## Accessor for getting the column index of a field by name.
   ## This is accessible after the query has been opened and is performed as a hash table lookup.
   let fieldLower = toLowerAscii(fieldname)
@@ -123,10 +130,10 @@ proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
   if result:
     for colIdx in 1..colCount:
       var
-        colDetail = qry.colDetails[colIdx - 1]
+        colDetail = qry.colFields[colIdx - 1]
         size: int
       if colDetail.colType.isString:
-        colDetail.sqlDataType = SQL_WCHAR
+        colDetail.rawSqlType = SQL_WCHAR
         size = (colDetail.size + 1) * 2 # Add space for zero terminator and account for WideChar
       else:
         size = colDetail.size
@@ -146,8 +153,8 @@ proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
         [$colDetail.colType, $colDetail.sqlDataType, $colDetail.ctype, $size, $colDetail.size]
 
       var indicator: TSqlInteger  # buffer
-      res = SQLGetData(qry.handle, colIdx.SqlUSmallInt, colDetail.cType,
-                       qry.dataBuf, size.TSqlInteger, addr(indicator))
+      res = SQLGetData( qry.handle, colIdx.SqlUSmallInt, colDetail.cType,
+                        qry.dataBuf, size.TSqlInteger, addr(indicator))
       rptOnErr(qry.con.reporting, res, "SQLGetData", qry.handle, SQL_HANDLE_STMT.TSqlSmallInt)
       when defined(odbcdebug): echo "Indicator for this row says ", indicator
 
@@ -162,11 +169,18 @@ proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
             curData.readFromBuf(qry.dataBuf, indicator)
             # we cannot know the tablename unfortunately
             row.add(curData)
+        else:
+          row.add(initSQLData(dtNull))
 
 proc fetch*(qry: SQLQuery): SQLResults =
   ## Return all rows to results
   result = initSQLResults()
-  result.fieldTable = qry.fieldIdxs
+  result.fieldnameIndex = qry.fieldIdxs
+  # copy over fields as they'll be the same as the query
+  # Note that colIndex should already be set up and match our result columns
+  result.colFields = qry.colFields
+  for i in 0..< qry.colFields.len:
+    result.fieldnames.add(qry.colFields[i].fieldname, i)
   var newRow = initSQLRow()
   while qry.fetchRow(newRow):
     result.add(newRow)
@@ -178,7 +192,7 @@ proc close*(qry: var SQLQuery) =
   # as you may simply wish to set them and re-run the query
   if qry.opened:
     # SQLFreeStmt*(StatementHandle: SqlHStmt, Option: SqlUSmallInt): TSqlSmallInt
-    var res = SQLFreeStmt(qry.handle, SQL_CLOSE)
+    let res = SQLFreeStmt(qry.handle, SQL_CLOSE)
     rptOnErr(qry.con.reporting, res, "Close query (SQLFreeStmt)", qry.handle, SQL_HANDLE_STMT.TSqlSmallInt)
     qry.opened = false
 
@@ -207,8 +221,9 @@ template bindParams(qry: var SQLQuery) =
   # in place substitution for a bit less typing
   qry.handle.bindParams(qry.params, qry.con.reporting)
 
-proc getColDetails(qry: SQLQuery, colID: int): SQLColDetails =
+proc getColDetails(qry: SQLQuery, colID: int): SQLField =
   # get a column's metadata
+  result = newSQLField(colIndex = colID - 1)  # also set up column index
   const buflen: TSqlSmallInt = 256
   var
     colName: string = newStringOfCap(buflen)
@@ -223,28 +238,27 @@ proc getColDetails(qry: SQLQuery, colID: int): SQLColDetails =
   colName.setLen(nameLen)
 
   if sqlSucceeded(retval):
-    result.name = colName
+    result.fieldName = colName
     result.colType = toSQLColumnType(sqlDataType)
-    result.sqlDataType = sqlDataType
+    result.dataType = toDataType(result.colType)
+    result.rawSqlType = sqlDataType
     result.size = columnSize
     result.digits = decimalDigits
     result.nullable = nullable != 0
     result.cType = result.colType.toCType
-  # clear colName for GC to collect
-  colName = nil
 
 proc setupColumns(qry: var SQLQuery) =
   # get all column metadata details
   let
     columns = qry.columnCount
 
-  qry.colDetails.setLen(columns)
+  qry.colFields.setLen(columns)
   for colIdx in 1..columns:
-    qry.colDetails[colIdx - 1] = getColDetails(qry, colIdx)
+    qry.colFields[colIdx - 1] = getColDetails(qry, colIdx)
 
   # set up hash table of field names -> rows
-  for idx, col in qry.colDetails:
-    qry.fieldIdxs[toLowerAscii(col.name)] = idx
+  for idx, col in qry.colFields:
+    qry.fieldIdxs[toLowerAscii(col.fieldName)] = idx
 
 proc opened*(qry: SQLQuery): bool = qry.opened
 
@@ -280,7 +294,7 @@ proc executeFetch*(qry: var SQLQuery): SQLResults =
   try:
     # Note: SQLExecute/SQLExecuteDirect SHOULD return SQL_NO_DATA when no results are available.
     # However, it doesn't seem reliable. The check is here nevertheless, assuming the ODBC driver
-    # behaves. See the fetch proc for the reliable method to check for a results set.
+    # behaves. See the fetchRow proc for the reliable method to check for a results set.
     if res.sqlSucceeded and res != SQL_NO_DATA:
       # read column info and collect all results
       qry.setupColumns
@@ -303,9 +317,29 @@ template withExecute*(qry: SQLQuery, row, actions: untyped) =
   ## Query is automatically closed after the last row is read.
   qry.open
   try:
-    var row {.inject.}: SQLRow
+    var
+      row {.inject.}: SQLRow
     while qry.fetchRow(row):
       actions
+  finally:
+    qry.close
+
+template withExecuteByField*(qry: SQLQuery, row, actions: untyped) =
+  ## Execute query and perform block for each field returned.
+  ## Query is automatically closed after the last row is read.
+  qry.open
+  try:
+    var
+      row {.inject.}: SQLRow
+      field {.inject.}: SQLField
+      fieldIdx {.inject.}: int
+      data {.inject.}: SQLData
+    while qry.fetchRow(row):
+      for idx, item in row:
+        fieldIdx = idx
+        field = qry.fields(idx)
+        data = item
+        actions
   finally:
     qry.close
 
