@@ -52,8 +52,10 @@ proc toJson*(results: SQLResults): JsonNode =
   for k,v in results.fieldTable:
     fields.add(v,k)
   for row in results.rows:
+    var js = %*{}
     for idx,fld in row:
-      result.add(%*{fields[idx] : fld.toJson()})
+      js.add(fields[idx],fld.toJson())
+    result.add(js)
 
 
 
