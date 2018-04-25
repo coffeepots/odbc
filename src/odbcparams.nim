@@ -76,7 +76,7 @@ proc `[]=`*(params: var SQLParams, name: string, value: SQLParam) =
     # create new param name
     raise newODBCUnknownParameterException("parameter \"" & $name & "\" not found in statement")
 
-proc `[]=`*(params: var SQLParams, index: string, data: int|int64|string|bool|float|Time|SQLBinaryData) =
+proc `[]=`*(params: var SQLParams, index: string, data: int|int64|string|bool|float|TimeInterval|Time|SQLBinaryData) =
   # have to determine the column details for this type
   let
     paramName = toLowerAscii(index)
@@ -159,9 +159,8 @@ proc readFromBuf(dataItem: var SQLData, buffer: ParamBuffer, indicator: int) =
   of dtTime:
     var
       timestamp = cast[ptr SQL_TIMESTAMP_STRUCT](buffer)
-      ms = round(timestamp.Fraction / 1000).int  # fraction is in nanoseconds, interval uses milliseconds
-    dataItem.timeVal = initInterval(ms, timestamp.Second, timestamp.Minute, timestamp.Hour,
-        timestamp.Day, timestamp.Month, timestamp.Year)
+    dataItem.timeVal = initInterval(timestamp.Second.int, timestamp.Minute.int, timestamp.Hour.int,
+        timestamp.Day.int - 1, timestamp.Month.int, timestamp.Year.int) # day is 1 indexed in SQL
   when defined(odbcdebug):
     echo "Read buffer (first 255 bytes): ", repr(cast[ptr array[0..255, byte]](buffer))
 
@@ -183,7 +182,7 @@ proc writeToBuf(dataItem: SQLData, buffer: ParamBuffer) =
     timestamp.Second = dataItem.timeVal.seconds.SqlUSmallInt
     timestamp.Minute = dataItem.timeVal.minutes.SqlUSmallInt
     timestamp.Hour = dataItem.timeVal.hours.SqlUSmallInt
-    timestamp.Day = dataItem.timeVal.days.SqlUSmallInt
+    timestamp.Day = dataItem.timeVal.days.SqlUSmallInt + 1  # day is 1 indexed in SQL
     timestamp.Month = dataItem.timeVal.months.SqlUSmallInt
     timestamp.Year = dataItem.timeVal.years.SqlUSmallInt
   when defined(odbcdebug):
