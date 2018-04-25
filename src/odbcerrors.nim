@@ -82,8 +82,9 @@ from strutils import toHex
 proc toStr*(h: SqlHandle, handleType: TSqlSmallInt): string =
   result = toHex(cast[int](h), 8)
   if handleType == SQL_HANDLE_ENV: result &= " (env)"
-  elif handleType == SQL_HANDLE_ENV: result &= " (env)"
-  elif handleType == SQL_HANDLE_ENV: result &= " (env)"
+  elif handleType == SQL_HANDLE_DBC: result &= " (dbc)"
+  elif handleType == SQL_HANDLE_STMT: result &= " (stmt)"
+  elif handleType == SQL_HANDLE_DESC: result &= " (desc)"  
   else: result &= " (" & $handleType.int & ")"
 
 proc rptOnErr*(rptState: var ODBCReportState, resp: TSqlSmallInt, callname: string, handle: SqlHandle = nil, handleType = SQL_HANDLE_ENV.TSqlSmallInt) =
