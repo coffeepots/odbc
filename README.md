@@ -114,15 +114,10 @@ This is useful for command type queries where you don't expect a result set. Cal
 
 ### Result sets
 
-A result set is defined as the type SQLResults, which is a sequence of SQLRow, which in turn is a sequence of SQLValue.
+A result set is defined as the type SQLResults, which contains a sequence of SQLRow and this in turn is a sequence of field data defined as SQLData.
+SQLResults also contains a table of fields, which stores the fieldname, size and datatype of the field.
 
-SQL Value is an object that consists of two components:
-* SQLValue.field
-* SQLValue.data
-
-The field component contains the fieldname, size and datatype of the field, whereas the data contains the data for that field.
-
-Data elements are a variant object, and can be of several different types.
+SQLData elements are a variant object, and can be of several different types.
 * nullVal: Null. This is actually a string. Future versions may allow a default string representation of this to be configured; currently, it's just an empty string.
 * strVal: String
 * intVal: Int
@@ -131,6 +126,18 @@ Data elements are a variant object, and can be of several different types.
 * floatVal: Float
 * timeVal: Time. This is of timeInterval type so we can store milliseconds.
 * binVal: Binary. Stored as a seq[byte].
+
+Data from a result set can be accessed via field with the fieldData proc:
+
+  var data = results.fieldData(fieldnameString, rowIdx)
+
+If you don't specify a rowIdx (or provide a value < 0) the data is retrieved from the row indicated by the results.curRow variable
+
+Alternatively, data can be access directly via:
+
+  var data = results[rowIdx][columnIdx]
+
+
 
 #### Data conversions
 
@@ -165,11 +172,8 @@ Note that the statement is set only once, and in both examples the opening/closi
 
     qry.statement = "SELECT 'A' AS A, 5 AS B, 0.8 AS C"
     
-    qry.withExecute(row):
-      for item in row:
-        if item.field.fieldname == "A": echo "A is found!"
-        else: echo item.field.fieldname, " is found, and of type ", item.field.dataType
-        echo "Item data: ", item.data
+    qry.withExecuteByField(row):
+      echo "Field ", field.fieldname, " (", field.dataType, "): ", data
 
     var results = qry.executeFetch
     echo results.len, " total row(s)"                   # outputs "1 total row(s)
@@ -190,7 +194,7 @@ Parameters are set by value by using their name as follows:
     echo qry.executeFetch
     # outputs 5, 1
 
-Parameters are defined internally when you set the statement for the query, and will raise an error if you try to set a value for one that isn't referenced in the statement string.
+Parameters are constructed internally when you set the statement for the query, and will raise an error if you try to set a value for one that isn't referenced in the statement string.
 Parameters can also be used multiple times in the same query without having to redefine them. This is different from normal odbc, where you must apply the same value to different parameters if you want to use it more than once.
 For example: 
 
@@ -208,6 +212,8 @@ You can convert results, rows or individual SQLValue objects to JSON format usin
     
     from json import pretty # This allows us to convert json to human readable form for the echo
     echo results.toJson.pretty
+
+Please note: because the fields are stored in the SQLResults type, not the data, passing a row or data item to toJson will produce a 'data only' Json node.
         
 ## Utilities
 
