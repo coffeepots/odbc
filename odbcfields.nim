@@ -21,7 +21,7 @@ type
 
   SQLRow* = seq[SQLData]
   SQLResults* = object
-    fieldTable: Table[string, int]
+    fieldTable*: Table[string, int]
     rows*: seq[SQLRow]
     curRow*: int
 
@@ -36,7 +36,7 @@ proc field*(results: var SQLResults, fieldName: string, rowIdx: int = -1): SQLDa
   results.fieldTable.withValue(fieldName.toLowerAscii, fldIdx) do:
     # value found
     if rowIdx < 0:
-      result = results[results.curRow][fldIdx[]] 
+      result = results[results.curRow][fldIdx[]]
     else:
       result = results[rowIdx][fldIdx[]]
   do:
