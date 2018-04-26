@@ -222,6 +222,43 @@ proc allocateBuffers(params: var SQLParams) =
       params.paramBuf.add(alloc0(sqlDefaultBufferSize))
       params.paramIndBuf.add(indBuf)
 
+#
+## dbQuote
+##   quotes a string as conformant with SQL
+proc dbQuote*(s: string): string =
+  ## DB quotes the string.
+  if s.isNil: return "NULL"
+  result = "'"
+  for c in items(s):
+    if c == '\'': add(result, "''")
+    else: add(result, c)
+  add(result, '\'')
+
+
+proc bindParams*(sqlStatement: var string, params: var SQLParams, rptState: var ODBCReportState) =
+  # Parameters: for ApacheDrill we resolve params and clear params collection
+  var
+    sql = ""
+    idx = 0
+  for s in sqlStatement:
+    if s == '?':
+      case params[idx].data.kind:
+        of dtString,
+           dtTime : sql.add(dbQuote(params[idx].data.strVal))
+        of dtInt  : sql.add(params[idx].data.intVal)
+        of dtInt64: sql.add(params[idx].data.int64Val)
+        of dtBool : sql.add($params[idx].data.boolVal)
+        of dtFloat: sql.add(params[idx].data.floatVal)
+        else:
+           rptState.odbcLog("SQLBindParameter : No handler for param type $1, value $2" % [$params[idx].data.kind,$params[idx].data])
+      inc idx
+    else:
+      sql.add(s)
+  params.clear()
+  sqlStatement = sql
+
+
+
 proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCReportState) =
   # Parameters: ODBC can't use named parameters, so we need to do a string lookup
   # and populate according to order

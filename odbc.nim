@@ -205,7 +205,11 @@ template setup(qry: var SQLQuery) =
 
 template bindParams(qry: var SQLQuery) =
   # in place substitution for a bit less typing
-  qry.handle.bindParams(qry.params, qry.con.reporting)
+  #apache drill has no concept of parameters so we resolve them before sending query
+  if qry.con.serverType == ApacheDrill:
+    qry.odbcStatement.bindParams(qry.params, qry.con.reporting)
+  else:
+    qry.handle.bindParams(qry.params, qry.con.reporting)
 
 proc getColDetails(qry: SQLQuery, colID: int): SQLColDetails =
   # get a column's metadata

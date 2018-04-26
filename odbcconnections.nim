@@ -1,7 +1,7 @@
 import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting, tables
 
 type
-  ODBCServerType = enum SQLSever,ApacheDrill
+  ODBCServerType* = enum SQLSever,ApacheDrill
   ODBCTransactionMode = enum tmAuto, tmManual
 
   ODBCConnection* = ref object
@@ -61,7 +61,7 @@ proc finaliseConnections {.noconv.} =
     pair[1].freeConnection
   when defined(odbcdebug): echo "Finalising connections done"
 
-proc newODBCConnection*(driver: string = "", host: string = "", database: string = ""): ODBCConnection =
+proc newODBCConnection*(driver: string = "", host: string = "", database: string = "",server:ODBCServerType = SQLSever): ODBCConnection =
   new(result, freeConnection)
   result.connectionString = ""
   result.driver = driver
@@ -76,6 +76,7 @@ proc newODBCConnection*(driver: string = "", host: string = "", database: string
   # Use SQL Server Native Client by default
   result.driver = "SQL Server Native Client 11.0"
   result.provider = ""
+  result.serverType = server
   result.reporting = newODBCReportState()
   result.reporting.level = defaultReportingLevel
   result.reporting.destinations = {rdStore}
