@@ -40,7 +40,6 @@ For Apache Drill this would be
     con.password = "Password"
     con.authenticationType = "Plain"
     con.connectionType = "Direct"
-    con.zkClusterID = "drillbits1"
 
     if not con.connect:
       echo "Could not connect to database.
