@@ -30,7 +30,6 @@ or
 
 For Apache Drill this would be
 
-    ```nim
     var
       con = newODBCConnection(server=ApacheDrill)
     con.driver = "/opt/mapr/drill/lib/64/libdrillodbc_sb64.so"
@@ -44,7 +43,7 @@ For Apache Drill this would be
     con.zkClusterID = "drillbits1"
 
     if not con.connect:
-      echo "Could not connect to database.```
+      echo "Could not connect to database.
 
 The connection object also offers some convenience settings such as multipleActiveResultSets, which tells ODBC that you want to be able to run multiple queries at the same time - for instance, if you need to use a lookup query whilst another query is active. This is set to true by default.
 
