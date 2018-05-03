@@ -1,7 +1,10 @@
-import ../odbc.nim, wininifiles, times, os
+import ../odbc
+
+import wininifiles, times, os,json,marshal,tables
 
 var
   con = newODBCConnection()
+
   iniSettings: IniFile
 if not iniSettings.loadIni(getCurrentDir().joinPath("DBConnect.ini")):
   echo "Could not find ini file ", iniSettings.filename
@@ -18,14 +21,19 @@ if not iniSettings.loadIni(getCurrentDir().joinPath("DBConnect.ini")):
 # Password=MyPassword
 # WinAuth=0
 
+echo listDrivers()
 con.host = iniSettings.find("database", "hostname")
-con.driver = "SQL Server Native Client 11.0"
+con.driver = "/opt/mapr/drill/lib/64/libdrillodbc_sb64.so"
 con.database = iniSettings.find("database", "database")
 con.userName = iniSettings.find("database", "username")
 con.password = iniSettings.find("database", "password")
-con.integratedSecurity = iniSettings.find("database", "winauth") == "1"
+con.authenticationType = "Plain"
+con.connectionType = "Direct"
+con.port = 31010
+con.zkClusterID = "drillbits1"
+con.integratedSecurity = false
 con.reporting.level = rlErrorsAndInfo
-con.reporting.destinations = {rdStore, rdEcho}
+con.reporting.destinations = {rdStore}
 echo "DSN: ", con.getConnectionString
 
 if not connect(con):
@@ -34,36 +42,50 @@ if not connect(con):
 echo "Connected to host \"" & con.host & "\", database \"" & con.database & "\""
 
 type
-  TestMode = enum testSimpleParams, testNulls, testListDrivers, testInsert, testWithExecute, testDuplicateParams,
+  TestMode = enum testSimpleSelect, testSimpleParams, testListDrivers, testInsert, testWithExecute, testDuplicateParams,
     testVolumeParams, testEmptyStrings, testBinary, testDateTime, testInt64, testUnicodeStrings,
     testLongStrings, testTransactions, testJson, testFieldByName, testConversions, testDestruction
   TestModes = set[TestMode]
 
-const tests: TestModes = {testSimpleParams, testNulls, testListDrivers, testInsert, testWithExecute, testDuplicateParams,
+discard """ const tests: TestModes = {testSimpleParams, testNulls, testListDrivers, testInsert, testWithExecute, testDuplicateParams,
     testEmptyStrings, testBinary, testDateTime, testInt64, testUnicodeStrings,
     testLongStrings, testTransactions, testJson, testFieldByName, testConversions}
+ """
 
+const tests: TestModes = {testSimpleParams}
 var
   qry = newQuery(con)
-  res: SQLResults
+  res: odbc.SQLResults
 
-when testSimpleParams in tests:
-  echo "Simple parameter tests:"
-  qry.statement = "SELECT ?b+?c, ?a"
-  qry.params["a"] = 1
-  qry.params["b"] = 2
-  qry.params["c"] = 3
-  echo qry.statement, " a=", $qry.params["a"].data, " b=", $qry.params["b"].data, " c=", $qry.params["c"].data
+when testSimpleSelect in tests:
+  echo "Simple SELECT tests:"
+  qry.statement = "SELECT * FROM dfs.data.procs limit 5"
   res = qry.executeFetch
-  echo " result: ", res
-  assert(res[0][0].intVal == 5)
-  assert(res[0][1].intVal == 1)
+  #echo " result: ", res
+  #from json import pretty # This allows us to convert json to human readable form for the echo
+  #echo res.toJson.pretty
+  if con.reporting.messages.len > 0:
+    for s in con.reporting.messages:
+      echo s
+  else:
+    echo res.rows.len
+    echo res.toJson
+  #assert(res[0][0].intVal == 5) """
+  #assert(res[0][1].intVal == 1)
+  con.close()
+when testSimpleParams in tests:
+  echo "Simple Params tests"
+  qry.statement = "SELECT h.* FROM dfs.data.hosts h WHERE h.id = ?a LIMIT 10"
+  qry.params["a"] = "b7ab9add9a761df2e33b16b2038dbf9c"
+  res = qry.executeFetch
+  if con.reporting.messages.len > 0:
+    for s in con.reporting.messages:
+      echo s
+  else:
+    echo res.rows.len
+    echo res.toJson
 
-when testNulls in tests:
-  qry.statement = "SELECT ?a"
-  qry.params["a"] = "test"
-  qry.params.clear("a")
-  echo qry.executeFetch
+  con.close()
 
 when testListDrivers in tests:
   echo listDrivers()
