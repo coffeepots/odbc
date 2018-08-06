@@ -1,6 +1,7 @@
 import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting, tables
 
 type
+  ODBCServerType* = enum SQLSever,ApacheDrill
   ODBCTransactionMode = enum tmAuto, tmManual
 
   ODBCConnection* = ref object
@@ -17,10 +18,15 @@ type
     provider*: string
     integratedSecurity*: bool
     connected: bool
+    serverType:ODBCServerType
     transMode: ODBCTransactionMode
     multipleActiveResultSets*: bool
     autoTranslate*: bool
     encrypted*: bool
+    authenticationType*:string
+    connectionType*:string
+    zkClusterID*:string
+    port*:int
     reporting*: ODBCReportState
 
 var
@@ -55,7 +61,7 @@ proc finaliseConnections {.noconv.} =
     pair[1].freeConnection
   when defined(odbcdebug): echo "Finalising connections done"
 
-proc newODBCConnection*(driver: string = "", host: string = "", database: string = ""): ODBCConnection =
+proc newODBCConnection*(driver: string = "", host: string = "", database: string = "",server:ODBCServerType = SQLSever): ODBCConnection =
   new(result, freeConnection)
   result.connectionString = ""
   result.driver = driver
@@ -70,6 +76,7 @@ proc newODBCConnection*(driver: string = "", host: string = "", database: string
   # Use SQL Server Native Client by default
   result.driver = "SQL Server Native Client 11.0"
   result.provider = ""
+  result.serverType = server
   result.reporting = newODBCReportState()
   result.reporting.level = defaultReportingLevel
   result.reporting.destinations = {rdStore}
@@ -104,10 +111,19 @@ proc getConnectionString*(con: var ODBCConnection): string =
     params.add("Mars_Connection=Yes")
   if con.encrypted:
     params.add("Encrypt=yes")
+  if not con.authenticationType.isNil():
+    params.add("AuthenticationType=" & con.authenticationType)
+  if not con.connectionType.isNil():
+    params.add("connectionType=" & con.connectionType)
+  if con.port > 0:
+    params.add("Port=" & $con.port)
+  if not con.zkClusterID.isNil():
+    params.add("ZKClusterID=" & con.zkClusterID)
   if con.autoTranslate:
     params.add("AutoTranslate=Yes")
   else:
     params.add("AutoTranslate=No")
+
 
   result = join(params, ";")
 
@@ -162,7 +178,7 @@ proc `timeout=`*(con: var ODBCConnection, conTimeout: int) =
 
 proc connect*(con: var ODBCConnection): bool =
   var
-    outstr: string = newStringOfCap(256)
+    outstr: string = newString(256)
     outstr_len: TSqlSmallInt
     conStr: string
 

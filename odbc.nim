@@ -15,17 +15,17 @@ import
   hashes,
   tables,
   typetraits,
-  src / [odbctypes, odbcerrors, odbcreporting]
+  odbc / [odbctypes, odbcerrors, odbcreporting]
 
 export odbctypes, odbcreporting
 
 # this import includes the handles module and also imports odbcerrors
 include
-  src/odbcconnections,
-  src/odbchandles,
-  src/odbcparams,
-  src/odbcjson,
-  src/odbcutils
+  odbc/odbcconnections,
+  odbc/odbchandles,
+  odbc/odbcparams,
+  odbc/odbcjson,
+  odbc/odbcutils
 
 type
   SQLQueryObj* = object
@@ -50,8 +50,8 @@ type
     # whether to prepare the query, true by default.
     prepare*: bool
 
-  # SQLQuery is a ref to allow finalisers
-  SQLQuery = ref SQLQueryObj
+  # Main query object
+  SQLQuery* = ref SQLQueryObj
 
 proc freeQuery(qry: SQLQuery) =
   # finalizer for query
@@ -177,7 +177,7 @@ proc fetch*(qry: SQLQuery): SQLResults =
   # copy over fields as they'll be the same as the query
   # Note that colIndex should already be set up and match our result columns
   result.colFields = qry.colFields
-  for i in 0..< qry.colFields.len:
+  for i in 0 ..< qry.colFields.len:
     result.fieldnames.add(qry.colFields[i].fieldname, i)
   var newRow = initSQLRow()
   while qry.fetchRow(newRow):
@@ -217,14 +217,18 @@ template setup(qry: var SQLQuery) =
 
 template bindParams(qry: var SQLQuery) =
   # in place substitution for a bit less typing
-  qry.handle.bindParams(qry.params, qry.con.reporting)
+  #apache drill has no concept of parameters so we resolve them before sending query
+  if qry.con.serverType == ApacheDrill:
+    qry.odbcStatement.bindParams(qry.params, qry.con.reporting)
+  else:
+    qry.handle.bindParams(qry.params, qry.con.reporting)
 
 proc getColDetails(qry: SQLQuery, colID: int): SQLField =
   # get a column's metadata
   result = newSQLField(colIndex = colID - 1)  # also set up column index
   const buflen: TSqlSmallInt = 256
   var
-    colName: string = newStringOfCap(buflen)
+    colName: string = newString(buflen)
     nameLen: TSqlSmallInt
     sqlDataType: TSqlSmallInt
     columnSize: SqlUInteger
@@ -322,9 +326,14 @@ template withExecute*(qry: SQLQuery, row, actions: untyped) =
   finally:
     qry.close
 
-template withExecuteByField*(qry: SQLQuery, row, actions: untyped) =
+template withExecuteByField*(qry: SQLQuery, actions: untyped) =
   ## Execute query and perform block for each field returned.
   ## Query is automatically closed after the last row is read.
+  ## Injects
+  ##  row: all field data in this row
+  ##  field: current field object being processed
+  ##  fieldIdx: index into qry.fields
+  ##  data: data stored in this row's field
   qry.open
   try:
     var

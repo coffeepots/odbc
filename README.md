@@ -1,7 +1,7 @@
 # ODBC for Nim
 This module extends the odbcsql wrapper to allow easy access to databases through ODBC.
 
-The primary goal is to give Nim simpler access to Microsoft SQL Server in particular. Note that all of the testing for this module has been performed on SQL Server, though it should be possible to use any ODBC driver. However, you may need to manually set the connection string as other drivers may use different nomenclature and/or have different capabilities.
+The primary goal is to give Nim simpler access to Microsoft SQL Server in particular. This module has been tested on SQL Server and Apache Drill, though it should be possible to use any ODBC driver. However, you may need to manually set the connection string as other drivers may use different nomenclature and/or have different capabilities.
 
 Database access consists of two main objects: ODBCConnection and Query.
 
@@ -14,10 +14,10 @@ Connections can be initialised as follows:
     con.driver = "SQL Server Native Client 11.0"
     con.host = "ServerAddress"
     con.database = "DatabaseName"
-    
+
     if not con.connect:
       echo "Could not connect to database."
-      
+
 Connection authentication can be set to "integrated security", which will use your current security context (in Windows), or you can specify a username and password manaully.
 
     con.integratedSecurity = true # Use your current logged on Windows user to access the database.
@@ -27,6 +27,22 @@ or
     con.integratedSecurity = false
     con.userName = "Username"
     con.password = "Password"
+
+For Apache Drill this would be
+
+    var
+      con = newODBCConnection(server=ApacheDrill)
+    con.driver = "/opt/mapr/drill/lib/64/libdrillodbc_sb64.so"
+    con.host = "ServerAddress"
+    con.port = 31010
+    con.integratedSecurity = false
+    con.userName = "Username"
+    con.password = "Password"
+    con.authenticationType = "Plain"
+    con.connectionType = "Direct"
+
+    if not con.connect:
+      echo "Could not connect to database.
 
 The connection object also offers some convenience settings such as multipleActiveResultSets, which tells ODBC that you want to be able to run multiple queries at the same time - for instance, if you need to use a lookup query whilst another query is active. This is set to true by default.
 
@@ -61,7 +77,7 @@ Transactions can be controlled using the beginTrans and commitTrans procs, and a
     con.beginTrans
     # do work using any query that's set to use this connection
     con.commitTrans
-  
+
 ## Queries
 
 Queries are the fundamental mechanism for running SQL.
@@ -168,13 +184,20 @@ To extract data you can either use the raw value - for example 'data.boolVal' - 
 #### Example results use
 
 Here we use two different methods of working with results from a simple query.
-Note that the statement is set only once, and in both examples the opening/closing of the query is performed behind the scenes.
+Note that the statement is set only once, and in each example the opening/closing of the query is performed behind the scenes.
 
     qry.statement = "SELECT 'A' AS A, 5 AS B, 0.8 AS C"
     
-    qry.withExecuteByField(row):
+    qry.withExecuteByField:
+      # Execute query and perform this block for each field returned.
       echo "Field ", field.fieldname, " (", field.dataType, "): ", data
 
+    qry.withExecute(row):
+      for idx, data in row:
+        if qry.fields(idx).fieldname == "A": echo "A is found!"
+        else: echo qry.fields(idx).fieldname, " is found, and of type ", qry.fields(idx).dataType
+        echo "Item data: ", data
+        
     var results = qry.executeFetch
     echo results.len, " total row(s)"                   # outputs "1 total row(s)
     echo "First field's data is ", results[0][0].data   # outputs "First field's data is A"
@@ -196,7 +219,7 @@ Parameters are set by value by using their name as follows:
 
 Parameters are constructed internally when you set the statement for the query, and will raise an error if you try to set a value for one that isn't referenced in the statement string.
 Parameters can also be used multiple times in the same query without having to redefine them. This is different from normal odbc, where you must apply the same value to different parameters if you want to use it more than once.
-For example: 
+For example:
 
     qry.statement = "SELECT ?a, ?a+?a, ?a*?a"
     qry.params["a"] = 10
@@ -209,7 +232,7 @@ You can convert results, rows or individual SQLValue objects to JSON format usin
 
     qry.statement = "SELECT 'A', 'B', 'C'
     var results = qry.executeFetch
-    
+
     from json import pretty # This allows us to convert json to human readable form for the echo
     echo results.toJson.pretty
 

@@ -22,8 +22,8 @@ proc listDrivers*(con: ODBCConnection = nil): seq[SQLDriverInfo] =
     attrBufLen = 2048
   var
     env: SqlHEnv
-    driver = newStringOfCap(driverBufLen)
-    attr = newStringOfCap(attrBufLen)
+    driver = newString(driverBufLen)
+    attr = newString(attrBufLen)
     driver_ret: TSqlSmallInt
     attr_ret: TSqlSmallInt
     direction: SqlUSmallInt

@@ -159,8 +159,8 @@ proc readFromBuf(dataItem: var SQLData, buffer: ParamBuffer, indicator: int) =
   of dtTime:
     var
       timestamp = cast[ptr SQL_TIMESTAMP_STRUCT](buffer)
-    dataItem.timeVal = initInterval(timestamp.Second.int, timestamp.Minute.int, timestamp.Hour.int,
-        timestamp.Day.int - 1, timestamp.Month.int, timestamp.Year.int) # day is 1 indexed in SQL
+    dataItem.timeVal = initTimeInterval(timestamp.Fraction, 0, 0, timestamp.Second, timestamp.Minute, timestamp.Hour,
+        timestamp.Day - 1, timestamp.Month, timestamp.Year) # day is 1 indexed in SQL
   when defined(odbcdebug):
     echo "Read buffer (first 255 bytes): ", repr(cast[ptr array[0..255, byte]](buffer))
 
@@ -178,7 +178,7 @@ proc writeToBuf(dataItem: SQLData, buffer: ParamBuffer) =
   of dtTime:
     var
       timestamp = cast[ptr SQL_TIMESTAMP_STRUCT](buffer)
-    timestamp.Fraction = (dataItem.timeVal.milliseconds * 1000).SqlUSmallInt
+    timestamp.Fraction = dataItem.timeVal.nanoseconds.SqlUInteger
     timestamp.Second = dataItem.timeVal.seconds.SqlUSmallInt
     timestamp.Minute = dataItem.timeVal.minutes.SqlUSmallInt
     timestamp.Hour = dataItem.timeVal.hours.SqlUSmallInt
@@ -220,6 +220,43 @@ proc allocateBuffers(params: var SQLParams) =
       # allocate parameter buffer to default size
       params.paramBuf.add(alloc0(sqlDefaultBufferSize))
       params.paramIndBuf.add(indBuf)
+
+#
+## dbQuote
+##   quotes a string as conformant with SQL
+proc dbQuote*(s: string): string =
+  ## DB quotes the string.
+  if s.isNil: return "NULL"
+  result = "'"
+  for c in items(s):
+    if c == '\'': add(result, "''")
+    else: add(result, c)
+  add(result, '\'')
+
+
+proc bindParams*(sqlStatement: var string, params: var SQLParams, rptState: var ODBCReportState) =
+  # Parameters: for ApacheDrill we resolve params and clear params collection
+  var
+    sql = ""
+    idx = 0
+  for s in sqlStatement:
+    if s == '?':
+      case params[idx].data.kind:
+        of dtString,
+           dtTime : sql.add(dbQuote(params[idx].data.strVal))
+        of dtInt  : sql.add(params[idx].data.intVal)
+        of dtInt64: sql.add(params[idx].data.int64Val)
+        of dtBool : sql.add($params[idx].data.boolVal)
+        of dtFloat: sql.add(params[idx].data.floatVal)
+        else:
+           rptState.odbcLog("SQLBindParameter : No handler for param type $1, value $2" % [$params[idx].data.kind,$params[idx].data])
+      inc idx
+    else:
+      sql.add(s)
+  params.clear()
+  sqlStatement = sql
+
+
 
 proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCReportState) =
   # Parameters: ODBC can't use named parameters, so we need to do a string lookup
@@ -298,7 +335,7 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
 # saves importing parseutils for one func
 proc readAlphaNumeric(text: string, position: var int): string =
   result = ""
-  while (text[position] in Letters or text[position] in Digits) and position < text.len:
+  while position < text.len and (text[position] in Letters or text[position] in Digits):
     result.add(text[position])
     position += 1
 
@@ -365,6 +402,6 @@ proc odbcParamStatement(sqlStatement: string, paramPrefix: string = "?"): string
       p = sqlStatement.find(paramPrefix, start)
 
     if start < sqlStatement.len:
-      result &= sqlStatement[start .. sqlStatement.len]
+      result &= sqlStatement[start .. sqlStatement.len - 1]
 
   when defined(odbcdebug): echo "ODBC Statement: ", result

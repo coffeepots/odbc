@@ -58,8 +58,8 @@ proc getDiagMsg*(handle: SqlHandle, handleType: TSqlSmallInt): string =
     nativeError: TSqlInteger
     retval: TSqlSmallInt
     recNo = 1.TSqlSmallInt
-    sqlState = newStringOfCap(6)
-    msg = newStringOfCap(SQL_MAX_MESSAGE_LENGTH)
+    sqlState = newString(6)
+    msg = newString(SQL_MAX_MESSAGE_LENGTH)
     bufferLength: TSqlSmallInt = SQL_MAX_MESSAGE_LENGTH
     textLength: TSqlSmallInt
 
