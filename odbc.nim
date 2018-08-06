@@ -148,7 +148,7 @@ proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
       qry.dataBuf.zeroMem(size)
 
       when defined(odbcdebug): echo "Fetching: $#, sql type: $# ctype $# size $# colSize $#" %
-        [$colDetail.colType, $colDetail.sqlDataType, $colDetail.ctype, $size, $colDetail.size]
+        [$colDetail.colType, $colDetail.rawSqlType, $colDetail.ctype, $size, $colDetail.size]
 
       var indicator: TSqlInteger  # buffer
       res = SQLGetData( qry.handle, colIdx.SqlUSmallInt, colDetail.cType,
