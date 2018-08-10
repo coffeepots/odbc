@@ -1,4 +1,4 @@
-import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting, tables
+import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting, tables, strformat
 
 type
   ODBCServerType* = enum SQLSever,ApacheDrill
@@ -57,7 +57,7 @@ proc finaliseConnections {.noconv.} =
   # free up any connections
   when defined(odbcdebug): echo "Finalising connections..."
   for pair in activeConnections.pairs:
-    when defined(odbcdebug): echo "freeing connection to: ", pair[1].host
+    when defined(odbcdebug): echo &"freeing connection to: {pair[1].host}"
     pair[1].freeConnection
   when defined(odbcdebug): echo "Finalising connections done"
 

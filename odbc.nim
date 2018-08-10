@@ -10,12 +10,12 @@
 
 import
   odbcsql,
-  strutils,
   times,
   hashes,
   tables,
   typetraits,
-  odbc / [odbctypes, odbcerrors, odbcreporting]
+  odbc / [odbctypes, odbcerrors, odbcreporting],
+  strformat
 
 export odbctypes, odbcreporting
 
@@ -55,7 +55,7 @@ type
 
 proc freeQuery(qry: SQLQuery) =
   # finalizer for query
-  when defined(odbcdebug): echo "Freeing query with handle ", qry.handle
+  when defined(odbcdebug): echo &"Freeing query with handle {qry.handle}"
   freeStatementHandle(qry.handle, qry.con.reporting)
   qry.handle = nil
   qry.params.freeParamBufs
@@ -140,21 +140,20 @@ proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
 
       if size > sqlDefaultBufferSize:
         # size of column is larger than the default buffer size. Realloc to fit.
-        when defined(odbcdebug): echo "Increasing buffer size from default of $# to $#" % [$sqlDefaultBufferSize, $size]
+        when defined(odbcdebug): echo &"Increasing buffer size from default of {sqlDefaultBufferSize} to {size}"
         qry.dataBuf.dealloc
         qry.dataBuf = alloc0(size + 4)
 
       # clear buffer
       qry.dataBuf.zeroMem(size)
 
-      when defined(odbcdebug): echo "Fetching: $#, sql type: $# ctype $# size $# colSize $#" %
-        [$colDetail.colType, $colDetail.rawSqlType, $colDetail.ctype, $size, $colDetail.size]
+      when defined(odbcdebug): echo &"Fetching: {colDetail.colType}, sql type: {colDetail.rawSqlType} ctype {colDetail.ctype} size {size} colSize {colDetail.size}"
 
       var indicator: TSqlInteger  # buffer
       res = SQLGetData( qry.handle, colIdx.SqlUSmallInt, colDetail.cType,
                         qry.dataBuf, size.TSqlInteger, addr(indicator))
       rptOnErr(qry.con.reporting, res, "SQLGetData", qry.handle, SQL_HANDLE_STMT.TSqlSmallInt)
-      when defined(odbcdebug): echo "Indicator for this row says ", indicator
+      when defined(odbcdebug): echo &"Indicator for this row says {indicator}"
 
       if indicator == SQL_NO_TOTAL:
         when defined(odbcdebug): echo "No Total"

@@ -1,5 +1,6 @@
-import ../odbc, wininifiles, times, os, unittest, strutils, json
+import ../odbc, wininifiles, times, os, unittest, json
 from math import pow
+from strutils import repeat
 
 var
   iniSettings: IniFile

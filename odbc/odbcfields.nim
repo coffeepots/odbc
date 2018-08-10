@@ -1,4 +1,5 @@
-import odbcsql, odbctypes, tables, strutils, odbcerrors
+import odbcsql, odbctypes, tables, odbcerrors
+from strutils import toLowerAscii
 
 type
   SQLFieldObj = object
@@ -145,7 +146,5 @@ proc `$`*(sqlResults: SQLResults): string =
     result &= $row
     if idx < sqlResults.rows.high: result &= ",\n"
   result &= "]"
-
-#from strutils import cmpIgnoreCase
 
 proc isNull*(sqlVal: SQLValue): bool = sqlVal.data.kind == dtNull

@@ -1,4 +1,4 @@
-import odbcsql, odbctypes, tables, strutils, odbcerrors, times, unicode, odbcreporting
+import odbcsql, odbctypes, tables, odbcerrors, times, unicode, odbcreporting, strformat
 include odbcfields
 from math import round
 
@@ -61,20 +61,20 @@ proc `[]`*(params: SQLParams, name: string): SQLParam =
   let nameLower = toLowerAscii(name)
   if params.names.hasKey(nameLower): result = params.items[params.names[nameLower]]
   else:
-    raise newODBCUnknownParameterException("parameter \"" & $name & "\" not found in statement")
+    raise newODBCUnknownParameterException(&"parameter \"{name}\" not found in statement")
 
 proc `[]=`*(params: var SQLParams, name: string, value: SQLParam) =
   # for some reason this needs to be * exported to be used below.
   # changing to a non `` name solved the problem like so:
   # proc setByName(params: var SQLParams, name: string, value: SQLParam) =
   var nameLower = toLowerAscii(name)
-  when defined(odbcdebug): echo "Setting param: ", value
+  when defined(odbcdebug): echo &"Setting param: {value}"
   if params.names.hasKey(nameLower):
-    when defined(odbcdebug): echo " Has key, setting value for index ", params.names[nameLower]
+    when defined(odbcdebug): echo &" Has key, setting value for index {params.names[nameLower]}"
     params.items[params.names[nameLower]] = value
   else:
     # create new param name
-    raise newODBCUnknownParameterException("parameter \"" & $name & "\" not found in statement")
+    raise newODBCUnknownParameterException(&"parameter \"{name}\" not found in statement")
 
 proc `[]=`*(params: var SQLParams, index: string, data: int|int64|string|bool|float|TimeInterval|Time|SQLBinaryData) =
   # have to determine the column details for this type
@@ -82,7 +82,7 @@ proc `[]=`*(params: var SQLParams, index: string, data: int|int64|string|bool|fl
     paramName = toLowerAscii(index)
 
   if not params.names.hasKey(paramName):
-    raise newODBCUnknownParameterException("parameter \"" & $index & "\" not found in statement")
+    raise newODBCUnknownParameterException(&"parameter \"{index}\" not found in statement")
 
   var
     curParam: SQLParam = initParam()
@@ -103,7 +103,7 @@ proc clear*(params: var SQLParams, index: string) =
     paramName = toLowerAscii(index)
 
   if not params.names.hasKey(paramName):
-    raise newODBCUnknownParameterException("parameter \"" & $index & "\" not found in statement")
+    raise newODBCUnknownParameterException(&"parameter \"{index}\" not found in statement")
 
   # Param is copied from existing, but kind is changed to null
   var
@@ -191,7 +191,7 @@ proc writeToBuf(dataItem: SQLData, buffer: ParamBuffer) =
 proc allocateBuffers(params: var SQLParams) =
   # assumes parameter quantity have been read from statement
   when defined(odbcdebug):
-    echo "Allocate buffers: requesting $# items, cur len $#" % [$params.items.len, $params.paramBuf.len]
+    echo &"Allocate buffers: requesting {params.items.len} items, cur len {params.paramBuf.len}"
   if params.items.len == params.paramBuf.len: return  # no work
 
   if params.paramBuf == nil:
@@ -204,7 +204,7 @@ proc allocateBuffers(params: var SQLParams) =
     when defined(odbcdebug): echo "Reducing buffer size:"
     for idx in params.items.len .. params.paramBuf.len - 1:
       if params.paramBuf[idx] != nil:
-        when defined(odbcdebug): echo " Freeing paramBuf ", idx
+        when defined(odbcdebug): echo &" Freeing paramBuf {idx}"
         params.paramBuf[idx].dealloc
 
     params.paramBuf.setLen(params.items.len)
@@ -215,7 +215,7 @@ proc allocateBuffers(params: var SQLParams) =
     when defined(odbcdebug): echo "Increasing buffer size:"
     for idx in params.paramBuf.len .. params.items.len - 1:
       var indBuf: ParamIndBuf = 0 # Just an int no need to free
-      when defined(odbcdebug): echo " Adding paramBuf $# size (default): $# bytes" % [$idx, $sqlDefaultBufferSize]
+      when defined(odbcdebug): echo &" Adding paramBuf {idx} size (default): {sqlDefaultBufferSize} bytes"
 
       # allocate parameter buffer to default size
       params.paramBuf.add(alloc0(sqlDefaultBufferSize))
@@ -289,7 +289,7 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
 
     if paramDataSize > sqlDefaultBufferSize:
       # reallocate buffer size to accommodate larger data sizes
-      when defined(odbcdebug): echo "Reallocating parameter buffer to be length: ", paramDataSize + 2
+      when defined(odbcdebug): echo &"Reallocating parameter buffer to be length: {paramDataSize + 2}"
       params.paramBuf[idx].dealloc
       params.paramBuf[idx] = alloc0(paramDataSize + 2)
 
@@ -298,23 +298,9 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
     # indicator buffer
 
     when defined(odbcdebug):
-      echo """Binding: $idx (real index $realidx),
-        type = $type ctype = $ctype, raw odbc type = $odbctype size = $size
-        (passed size: $passedSize, bufSize: $bufsize, indBuff: $indbuffsize)
-        digits = $digits
-        bind: data = $data
-        """ %
-        ["idx", $idx,
-        "realidx", $paramIdxRef,
-        "type", $curParam.field.dataType,
-        "ctype", $curParam.field.cType,
-        "odbctype", $curParam.field.rawSqlType,
-        "size", $curParam.field.size,
-        "passedSize", $paramDataSize,
-        "data", $curParam.data,
-        "bufsize", $sqlDefaultBufferSize,
-        "digits", $curParam.field.digits,
-        "indbuffsize", $params.paramIndBuf[paramIdxRef]]
+      echo &"Binding slot {idx} (real index {paramIdxRef})"
+      echo &" Data Type {curParam.field.dataType}, value type {curParam.field.cType}, param type {curParam.field.rawSqlType}"
+      echo &" Column size {colSize}, digits {curParam.field.digits}, buffer len {paramDataSize}"
 
     var res = SQLBindParameter(handle,
       paramIdx.SqlUSmallInt,
@@ -327,7 +313,7 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
       paramDataSize,                      # byte count of data
       addr(params.paramIndBuf[paramIdxRef])
       )
-    when defined(odbcdebug): echo "param ind after bind is ", params.paramIndBuf[paramIdxRef]
+    when defined(odbcdebug): echo &"param ind after bind is {params.paramIndBuf[paramIdxRef]}"
     rptOnErr(rptState, res, "SQLBindParameter", handle, SQL_HANDLE_STMT.TSqlSmallInt)
 
     paramIdx += 1
@@ -363,7 +349,7 @@ proc setupParams(params: var SQLParams, sqlStatement: string, paramPrefix: strin
       newParam.field = newSQLField()
       params.items.add(newParam)
       params.names[paramName] = params.high
-      when defined(odbcdebug): echo "Found new param: \"" & paramName & "\""
+      when defined(odbcdebug): echo &"Found new param: \"{paramName}\""
 
     # set reference to point to the parameter with this name,
     # this allows queries such as "SELECT ?a, ?a, ?a" with only one parameter
@@ -404,4 +390,4 @@ proc odbcParamStatement(sqlStatement: string, paramPrefix: string = "?"): string
     if start < sqlStatement.len:
       result &= sqlStatement[start .. sqlStatement.len - 1]
 
-  when defined(odbcdebug): echo "ODBC Statement: ", result
+  when defined(odbcdebug): echo &"ODBC Statement: {result}"

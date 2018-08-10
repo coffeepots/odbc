@@ -1,4 +1,4 @@
-import odbcfields, odbctypes, json, unicode, tables
+import odbcfields, odbctypes, json, unicode, tables, strformat
 
 proc toJson*(data: SQLData): JsonNode =
   case data.kind:
@@ -36,7 +36,7 @@ proc toJson*(value: SQLValue): JsonNode =
   except:
     let e = getCurrentException()
     if e != nil:
-      echo "JSON conversion raised exception: " & e.msg & " for row: ", repr(result)
+      echo &"JSON conversion raised exception: {e.msg} for row: " & repr(result)
     else:
       echo "JSON conversion raised an exception but the details could not be retrieved for row: ", repr(result)
   result.fields = s
