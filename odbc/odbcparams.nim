@@ -45,7 +45,7 @@ proc high*(params: SQLParams): int =
 
 proc freeParamBufs(params: var SQLParams) =
   # called by finalizer
-  if params.paramBuf != nil:
+  if params.paramBuf.len > 0:
     for item in params.paramBuf:
       if item != nil:
         dealloc(item)
@@ -194,9 +194,9 @@ proc allocateBuffers(params: var SQLParams) =
     echo &"Allocate buffers: requesting {params.items.len} items, cur len {params.paramBuf.len}"
   if params.items.len == params.paramBuf.len: return  # no work
 
-  if params.paramBuf == nil:
+  if params.paramBuf.len == 0:
     params.paramBuf = @[]
-  if params.paramIndBuf == nil:
+  if params.paramIndBuf.len == 0:
     params.paramIndBuf = @[]
 
   if params.items.len < params.paramBuf.len:
