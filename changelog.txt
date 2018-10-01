@@ -1,3 +1,8 @@
+0.1.2
+  * Removed `isNil` from strings.
+
+  * Renamed `rawSqlType` to `sqlType`
+
 0.1.1
   * Restructuring to match nimble's requirements, and also a bit of refactoring.
 
@@ -7,5 +12,3 @@
     Now, fields are stored within the `SQLQuery` object, and are accessed via integer index using the `fields` proc.
   
   * Fixes to internal string allocations and processing.
-
-  TODO: Time fields are not returning nanoseconds.
