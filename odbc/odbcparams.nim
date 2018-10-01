@@ -226,7 +226,7 @@ proc allocateBuffers(params: var SQLParams) =
 ##   quotes a string as conformant with SQL
 proc dbQuote*(s: string): string =
   ## DB quotes the string.
-  if s.isNil: return "NULL"
+  if s == "": return "NULL"
   result = "'"
   for c in items(s):
     if c == '\'': add(result, "''")
