@@ -226,7 +226,7 @@ proc allocateBuffers(params: var SQLParams) =
 ##   quotes a string as conformant with SQL
 proc dbQuote*(s: string): string =
   ## DB quotes the string.
-  if s.isNil: return "NULL"
+  if s == "": return "NULL"
   result = "'"
   for c in items(s):
     if c == '\'': add(result, "''")
@@ -249,7 +249,7 @@ proc bindParams*(sqlStatement: var string, params: var SQLParams, rptState: var 
         of dtBool : sql.add($params[idx].data.boolVal)
         of dtFloat: sql.add(params[idx].data.floatVal)
         else:
-           rptState.odbcLog("SQLBindParameter : No handler for param type $1, value $2" % [$params[idx].data.kind,$params[idx].data])
+           rptState.odbcLog(&"SQLBindParameter : No handler for param type {$params[idx].data.kind}, value {$params[idx].data}")
       inc idx
     else:
       sql.add(s)
@@ -274,18 +274,17 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
       colSize = curParam.field.size
 
     if curParam.data.kind == dtNull:
-      params.paramIndBuf[paramIdxRef] = SQL_NULL_DATA  # null
-    else:
-      if curParam.data.kind == dtString:
-        if curParam.data.strVal.len > 0:
-          paramDataSize = (curParam.field.size + 1) * 2 # WideChar
-          params.paramIndBuf[paramIdxRef] = curParam.data.strVal.len*2
-        else:
-          # allow empty strings, else ODBC complains of precision error.
-          # NOTE: This ends up meaning that a "" is converted to " " :(
-          colSize = 1
+      params.paramIndBuf[paramIdxRef] = SQL_NULL_DATA
+    elif curParam.data.kind == dtString:
+      if curParam.data.strVal.len > 0:
+        paramDataSize = (curParam.field.size + 1) * 2 # WideChar
+        params.paramIndBuf[paramIdxRef] = curParam.data.strVal.len*2
       else:
-        params.paramIndBuf[paramIdxRef] = curParam.field.size
+        # allow empty strings, else ODBC complains of precision error.
+        # NOTE: This ends up meaning that a "" is converted to " " :(
+        colSize = 1
+    else:
+      params.paramIndBuf[paramIdxRef] = curParam.field.size
 
     if paramDataSize > sqlDefaultBufferSize:
       # reallocate buffer size to accommodate larger data sizes
@@ -294,19 +293,18 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
       params.paramBuf[idx] = alloc0(paramDataSize + 2)
 
     # write data to param buffers
-    curParam.data.writeToBuf(params.paramBuf[paramIdxRef]) # main data buffer
-    # indicator buffer
+    curParam.data.writeToBuf(params.paramBuf[paramIdxRef])
 
     when defined(odbcdebug):
       echo &"Binding slot {idx} (real index {paramIdxRef})"
-      echo &" Data Type {curParam.field.dataType}, value type {curParam.field.cType}, param type {curParam.field.rawSqlType}"
+      echo &" Data Type {curParam.field.dataType}, value type {curParam.field.cType}, param type {curParam.field.sqlType}"
       echo &" Column size {colSize}, digits {curParam.field.digits}, buffer len {paramDataSize}"
 
     var res = SQLBindParameter(handle,
       paramIdx.SqlUSmallInt,
       SQL_PARAM_INPUT.TSqlSmallInt,
       curParam.field.cType,
-      curParam.field.rawSQLType,
+      curParam.field.sqlType,
       colSize,                            # column size (for string types this is number of characters)
       curParam.field.digits.TSqlSmallInt, # digit size
       params.paramBuf[paramIdxRef],       # pointer to data to bind

@@ -131,8 +131,9 @@ proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
         colDetail = qry.colFields[colIdx - 1]
         size: int
       if colDetail.colType.isString:
-        colDetail.rawSqlType = SQL_WCHAR
-        size = (colDetail.size + 1) * 2 # Add space for zero terminator and account for WideChar
+        colDetail.sqlType = SQL_WCHAR
+        # Add a space for zero terminator and account for WideChar
+        size = (colDetail.size + 1) * 2
       else:
         size = colDetail.size
 
@@ -147,13 +148,13 @@ proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
       # clear buffer
       qry.dataBuf.zeroMem(size)
 
-      when defined(odbcdebug): echo &"Fetching: {colDetail.colType}, sql type: {colDetail.rawSqlType} ctype {colDetail.ctype} size {size} colSize {colDetail.size}"
+      when defined(odbcdebug): echo &"Fetching: {colDetail.colType}, sql type: {colDetail.sqlType} ctype {colDetail.ctype} size {size} colSize {colDetail.size}"
 
       var indicator: TSqlInteger  # buffer
       res = SQLGetData( qry.handle, colIdx.SqlUSmallInt, colDetail.cType,
                         qry.dataBuf, size.TSqlInteger, addr(indicator))
       rptOnErr(qry.con.reporting, res, "SQLGetData", qry.handle, SQL_HANDLE_STMT.TSqlSmallInt)
-      when defined(odbcdebug): echo &"Indicator for this row says {indicator}"
+      when defined(odbcdebug): echo &"SQLGetData returned {res}, with indicator: {indicator}"
 
       if indicator == SQL_NO_TOTAL:
         when defined(odbcdebug): echo "No Total"
@@ -242,7 +243,7 @@ proc getColDetails(qry: SQLQuery, colID: int): SQLField =
     result.fieldName = colName
     result.colType = toSQLColumnType(sqlDataType)
     result.dataType = toDataType(result.colType)
-    result.rawSqlType = sqlDataType
+    result.sqlType = sqlDataType
     result.size = columnSize
     result.digits = decimalDigits
     result.nullable = nullable != 0
