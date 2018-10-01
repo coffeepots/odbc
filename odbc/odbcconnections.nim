@@ -111,13 +111,13 @@ proc getConnectionString*(con: var ODBCConnection): string =
     params.add("Mars_Connection=Yes")
   if con.encrypted:
     params.add("Encrypt=yes")
-  if not con.authenticationType.isNil():
+  if con.authenticationType != "":
     params.add("AuthenticationType=" & con.authenticationType)
-  if not con.connectionType.isNil():
+  if con.connectionType != "":
     params.add("connectionType=" & con.connectionType)
   if con.port > 0:
     params.add("Port=" & $con.port)
-  if not con.zkClusterID.isNil():
+  if con.zkClusterID != "":
     params.add("ZKClusterID=" & con.zkClusterID)
   if con.autoTranslate:
     params.add("AutoTranslate=Yes")

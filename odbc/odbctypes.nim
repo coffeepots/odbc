@@ -142,7 +142,7 @@ proc toCType*(t: typeDesc): TSqlSmallInt =
     result = SQL_TYPE_NULL
     raise newODBCUnsupportedTypeException($t.name)
 
-proc toRawSQLType*(t: typeDesc): TSqlSmallInt =
+proc toSqlType*(t: typeDesc): TSqlSmallInt =
   if t is string: result = SQL_WCHAR
   elif t is int: result = SQL_INTEGER
   elif t is int64: result = SQL_BIGINT
@@ -154,7 +154,7 @@ proc toRawSQLType*(t: typeDesc): TSqlSmallInt =
     result = SQL_UNKNOWN_TYPE
     raise newODBCUnsupportedTypeException($t.name)
 
-proc toRawSQLType*(dataType: SQLDataType): TSqlSmallInt =
+proc toSqlType*(dataType: SQLDataType): TSqlSmallInt =
   case dataType
   of dtNull: result = SQL_UNKNOWN_TYPE
   of dtString: result = SQL_WCHAR
@@ -162,11 +162,11 @@ proc toRawSQLType*(dataType: SQLDataType): TSqlSmallInt =
   of dtInt64: result = SQL_BIGINT
   of dtBool: result = SQL_BIT
   of dtFloat: result = SQL_FLOAT
-  of dtTime: result = SQL_TYPE_TIMESTAMP
+  of dtTime: result = SQL_C_TIMESTAMP
   of dtBinary: result = SQL_BINARY
 
-proc toRawSQLType*(data: SQLData): TSqlSmallInt =
-  result = data.kind.toRawSQLType
+proc toSqlType*(data: SQLData): TSqlSmallInt =
+  result = data.kind.toSqlType
 
 proc initSQLData*(kind: SQLDataType = dtNull): SQLData =
   result.kind = kind
