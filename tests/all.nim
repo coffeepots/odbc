@@ -74,13 +74,12 @@ for conDetails in connections.mitems:
       check res[0][1].intVal == 1
 
     # TODO: Times loses nanoseconds when converted to SQL time
-    #[test "Times":
+    test "Times":
       let curTime = getTime()
       qry.statement = "SELECT ?a"
       qry.params["a"] = curTime
       res = qry.executeFetch
       check res[0][0].timeVal == curTime.toTimeInterval
-    ]#
 
     test "Nulls":
       qry.statement = "SELECT ?a"

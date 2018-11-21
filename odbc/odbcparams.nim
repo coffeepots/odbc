@@ -27,6 +27,16 @@ type
     paramBuf: seq[ParamBuffer]    # buffer for data
     paramIndBuf: seq[ParamIndBuf] # buffer for ind
 
+  SQL_TIMESTAMP_STRUCT_FRACTFIX* {.final, pure.} = object
+    # See https://github.com/coffeepots/odbc/issues/6
+    Year*: SqlUSmallInt
+    Month*: SqlUSmallInt
+    Day*: SqlUSmallInt
+    Hour*: SqlUSmallInt
+    Minute*: SqlUSmallInt
+    Second*: SqlUSmallInt
+    Fraction*: int32
+
 proc initParams*: SQLParams =
   result.items = @[]
   result.references = @[]
@@ -78,14 +88,12 @@ proc `[]=`*(params: var SQLParams, name: string, value: SQLParam) =
 
 proc `[]=`*(params: var SQLParams, index: string, data: int|int64|string|bool|float|TimeInterval|Time|SQLBinaryData) =
   # have to determine the column details for this type
-  let
-    paramName = toLowerAscii(index)
+  let paramName = toLowerAscii(index)
 
   if not params.names.hasKey(paramName):
     raise newODBCUnknownParameterException(&"parameter \"{index}\" not found in statement")
 
-  var
-    curParam: SQLParam = initParam()
+  var curParam: SQLParam = initParam()
 
   # param is just replaced
   curParam.data = initSQLData[data.type](data)
@@ -158,9 +166,9 @@ proc readFromBuf(dataItem: var SQLData, buffer: ParamBuffer, indicator: int) =
   of dtBinary: dataItem.binVal = bufToSeq(buffer, indicator)
   of dtTime:
     var
-      timestamp = cast[ptr SQL_TIMESTAMP_STRUCT](buffer)
+      timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
     dataItem.timeVal = initTimeInterval(timestamp.Fraction, 0, 0, timestamp.Second, timestamp.Minute, timestamp.Hour,
-        timestamp.Day - 1, timestamp.Month, timestamp.Year) # day is 1 indexed in SQL
+        timestamp.Day - 1, 0, timestamp.Month, timestamp.Year) # day is 1 indexed in SQL
   when defined(odbcdebug):
     echo "Read buffer (first 255 bytes): ", repr(cast[ptr array[0..255, byte]](buffer))
 
@@ -177,8 +185,8 @@ proc writeToBuf(dataItem: SQLData, buffer: ParamBuffer) =
   of dtBinary: dataItem.binVal.seqToBuf(buffer, dataItem.binVal.len)
   of dtTime:
     var
-      timestamp = cast[ptr SQL_TIMESTAMP_STRUCT](buffer)
-    timestamp.Fraction = dataItem.timeVal.nanoseconds.SqlUInteger
+      timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
+    timestamp.Fraction = dataItem.timeVal.nanoseconds.int32
     timestamp.Second = dataItem.timeVal.seconds.SqlUSmallInt
     timestamp.Minute = dataItem.timeVal.minutes.SqlUSmallInt
     timestamp.Hour = dataItem.timeVal.hours.SqlUSmallInt
@@ -311,7 +319,7 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
       paramDataSize,                      # byte count of data
       addr(params.paramIndBuf[paramIdxRef])
       )
-    when defined(odbcdebug): echo &"param ind after bind is {params.paramIndBuf[paramIdxRef]}"
+    when defined(odbcdebug): echo &"Param ind after bind is {params.paramIndBuf[paramIdxRef]}"
     rptOnErr(rptState, res, "SQLBindParameter", handle, SQL_HANDLE_STMT.TSqlSmallInt)
 
     paramIdx += 1
