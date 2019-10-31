@@ -79,7 +79,7 @@ proc loadIni*(inifile: var IniFile, filename: string = ""): bool =
           inifile.sections.add(curSection, sectionItems)
         else:
           # retrieve from existing section table
-          sectionItems = inifile.sections.mget(curSection)
+          sectionItems = inifile.sections[curSection]
 
         let
           # note: quotes are stripped
