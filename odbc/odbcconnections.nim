@@ -41,8 +41,8 @@ proc disconnect*(con: ODBCConnection) =
       disconnect(con.conHandle, con.reporting)
       con.connected = false
     freeConHandle(con.conHandle, con.reporting)
-    activeConnections.withValue(con.conHandle, value):
-      activeConnections.del(value.conHandle)
+    let value = activeConnections[con.conHandle]
+    activeConnections.del(value.conHandle)
     when defined(odbcdebug): echo "Disconnected handle ", repr(con.conHandle)
     con.conHandle = nil
 
@@ -53,12 +53,21 @@ proc freeConnection*(con: ODBCConnection) =
   if con.envHandle != nil:
     freeEnvHandle(con.envHandle, con.reporting)
 
+proc toValuesSeq[T, V](table: Table[T, V]): seq[V] =
+  var i: int
+  result.setLen(table.len)
+  for value in table.values:
+    result[i] = value
+    i = i + 1
+
 proc finaliseConnections {.noconv.} =
   # free up any connections
   when defined(odbcdebug): echo "Finalising connections..."
-  for pair in activeConnections.pairs:
-    when defined(odbcdebug): echo &"freeing connection to: {pair[1].host}"
-    pair[1].freeConnection
+  # Make a copy of the connections in order to iterate whilst deleting.
+  var hosts = activeConnections.toValuesSeq
+  for host in hosts:
+    when defined(odbcdebug): echo &"Freeing connection to: {host.repr}"
+    host.freeConnection
   when defined(odbcdebug): echo "Finalising connections done"
 
 proc newODBCConnection*(driver: string = "", host: string = "", database: string = "",server:ODBCServerType = SQLSever): ODBCConnection =

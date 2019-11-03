@@ -1,4 +1,4 @@
-import odbcsql, odbctypes, tables, odbcerrors, times, unicode, odbcreporting, strformat
+import odbcsql, odbctypes, tables, odbcerrors, times, unicode, odbcreporting, strformat, strutils
 include odbcfields
 from math import round
 
@@ -10,7 +10,6 @@ var
 
 type
   # This is used to cast pointers for easier access
-  UncheckedArray {.unchecked.} [t] = array[0,t]
   SQLByteArrayUC = ptr UncheckedArray[byte]
   Utf16ArrayUC = ptr UncheckedArray[Utf16Char]
 

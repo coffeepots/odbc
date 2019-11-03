@@ -1,4 +1,4 @@
-import odbcsql, odbctypes, tables, odbcerrors
+import odbcsql, odbctypes, tables, odbcerrors, times
 from strutils import toLowerAscii
 
 type

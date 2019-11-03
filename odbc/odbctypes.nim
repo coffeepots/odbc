@@ -168,34 +168,25 @@ proc toSqlType*(dataType: SQLDataType): TSqlSmallInt =
 proc toSqlType*(data: SQLData): TSqlSmallInt =
   result = data.kind.toSqlType
 
-proc initSQLData*(kind: SQLDataType = dtNull): SQLData =
-  result.kind = kind
+proc initSQLData*(kind: SQLDataType = dtNull): SQLData = SQLData(kind: kind)
 
 proc initSQLData*[T](inputData: T): SQLData =
   when T is int:
-    result.kind = dtInt
-    result.intVal = inputData
+    SQLData(kind: dtInt, intVal: inputData)
   elif T is int64:
-    result.kind = dtInt64
-    result.int64Val = inputData
+    SQLData(kind: dtInt64, int64Val: inputData)
   elif T is string:
-    result.kind = dtString
-    result.strVal = inputData
+    SQLData(kind: dtString, strVal: inputData)
   elif T is bool:
-    result.kind = dtBool
-    result.boolVal = inputData
+    SQLData(kind: dtBool, boolVal: inputData)
   elif T is float:
-    result.kind = dtFloat
-    result.floatVal = inputData
+    SQLData(kind: dtFloat, floatVal: inputData)
   elif T is TimeInterval:
-    result.kind = dtTime
-    result.timeVal = inputData
+    SQLData(kind: dtTime, timeVal: inputData)
   elif T is Time:
-    result.kind = dtTime
-    result.timeVal = inputData.toTimeInterval
+    SQLData(kind: dtTime, timeVal: inputData.toTimeInterval)
   elif T is SQLBinaryData:
-    result.kind = dtBinary
-    result.binVal = inputData
+    SQLData(kind: dtBinary, binVal: inputData)
   else:
     raise newODBCUnsupportedTypeException($T.name)
 
