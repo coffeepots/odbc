@@ -1,5 +1,5 @@
 # Package
-version       = "0.1.2"
+version       = "0.1.3"
 author        = "coffeepots"
 description   = "ODBC library around the odbcsql wrapper"
 license       = "MIT"
