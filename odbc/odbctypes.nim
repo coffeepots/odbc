@@ -290,29 +290,38 @@ proc asString*(sqlData: SQLData): string =
   of dtBinary: result = $sqlData.binVal
 
 proc asBinary*(sqlData: SQLData): SQLBinaryData =
-  result = @[]
   case sqlData.kind
   of dtNull: discard
   of dtString:
     var cs = sqlData.strVal.cstring
-    for c in cs:
-      result.add(c.byte)
+    result.setLen sqlData.strVal.len
+    for idx, c in cs:
+      result[idx] = c.byte
   of dtInt:
-    var buf = cast[array[int.sizeOf, byte]](sqlData.intVal)
-    for b in buf:
-      result.add(b)
+    const intSize = int.sizeOf
+    var buf = cast[array[intSize, byte]](sqlData.intVal)
+    result.setLen intSize
+    for idx, b in buf:
+      result[idx] = b
   of dtInt64:
-    var buf = cast[array[int64.sizeOf, byte]](sqlData.int64Val)
-    for b in buf:
-      result.add(b)
-  of dtBool: result.add(sqlData.boolVal.byte)
+    const intSize = int64.sizeOf
+    var buf = cast[array[intSize, byte]](sqlData.int64Val)
+    result.setLen intSize
+    for idx, b in buf:
+      result[idx] = b
+  of dtBool:
+    result.setLen 1
+    result[0] = sqlData.boolVal.byte
   of dtFloat:
-    var buf = cast[array[float.sizeOf, byte]](sqlData.floatVal)
-    for b in buf:
-      result.add(b)
+    const floatSize = float.sizeOf
+    var buf = cast[array[floatSize, byte]](sqlData.floatVal)
+    result.setLen floatSize
+    for idx, b in buf:
+      result[idx] = b
   of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to binary")
   of dtBinary:
-    for b in sqlData.binVal: result.add(b)
+    result.setLen sqlData.binVal.len
+    for idx, b in sqlData.binVal: result[idx] = b
 
 proc asTimeInterval*(sqlData: SQLData): TimeInterval =
   if sqlData.kind == dtTime: result = sqlData.timeVal

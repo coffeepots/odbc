@@ -164,9 +164,12 @@ for conDetails in connections.mitems:
       binData.setLen(100)
       for i in 0..<100: binData[i] = i.byte
       qry.params["a"] = binData
-      let res = qry.executeFetch[0][0].binVal
+      let
+        res = qry.executeFetch[0][0]
+        bin = res.binVal
       for i in 0..<100:
-        check res[i] == i.byte
+        check bin[i] == i.byte
+      check bin == res.asBinary
       
   suite "Unicode":
     test "Read/write unicode":
