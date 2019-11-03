@@ -20,6 +20,7 @@ type
   SQLBinaryData* = seq[byte]
 
   SQLData* = object
+    ## Variant type that represents a field's value.
     case kind: SQLDataType
     of dtNull: nullVal*: string
     of dtString: strVal*: string
@@ -35,9 +36,8 @@ type
 proc initFieldIdxs*: FieldIdxs = initTable[string, int]()
 
 proc toSQLDataType*(t: typeDesc): SQLDataType =
-  # convert type to datatype
-  # NOTE: This assumes string is unicode!
-  if t is string: result = dtString
+  # Convert type to datatype
+  if t is string: result = dtString # NOTE: This assumes string is unicode!
   elif t is int: result = dtInt
   elif t is int64: result = dtInt64
   elif t is bool: result = dtBool
@@ -49,9 +49,8 @@ proc toSQLDataType*(t: typeDesc): SQLDataType =
     raise newODBCUnsupportedTypeException($t.name)
 
 proc toSQLColumnType*(t: typeDesc): SQLColType =
-  # convert type to columntype
-  # NOTE: This assumes string is unicode!
-  if t is string: result = ctString
+  # Convert type to columntype
+  if t is string: result = ctString # NOTE: This assumes string is unicode!
   elif t is int: result = ctInt
   elif t is int64: result = ctBigInt
   elif t is bool: result = ctBit
@@ -104,8 +103,7 @@ proc toDataType*(dataType: SQLColType): SQLDataType =
   of ctBinary, ctFixedBinary: result = dtBinary
   else:
     result = dtNull
-    # todo:
-    # dtFixedBinary, dtBinary, dtBigInt, dtYearInterval, dtMonthInterval, dtDayInterval, dtSecondInterval, dtGUID
+    # TODO: dtFixedBinary, dtBigInt, dtYearInterval, dtMonthInterval, dtDayInterval, dtSecondInterval, dtGUID
     raise newODBCUnsupportedTypeException($dataType)
 
 proc toCType*(sqlType: SQLDataType): TSqlSmallInt =
@@ -120,7 +118,6 @@ proc toCType*(sqlType: SQLDataType): TSqlSmallInt =
   of dtTime: result = SQL_C_TYPE_TIMESTAMP
   of dtBinary: result = SQL_C_BINARY
 
-# TODO: This is broken
 proc toCType*(data: SQLData): TSqlSmallInt =
   result = data.kind.toCType
 
@@ -171,6 +168,7 @@ proc toSqlType*(data: SQLData): TSqlSmallInt =
 proc initSQLData*(kind: SQLDataType = dtNull): SQLData = SQLData(kind: kind)
 
 proc initSQLData*[T](inputData: T): SQLData =
+  ## Initialise a new `SQLData` based on the type of `inputData`.
   when T is int:
     SQLData(kind: dtInt, intVal: inputData)
   elif T is int64:
@@ -190,13 +188,8 @@ proc initSQLData*[T](inputData: T): SQLData =
   else:
     raise newODBCUnsupportedTypeException($T.name)
 
-proc kind*(data: SQLData): SQLDataType {.inline.} = data.kind
-
-proc `kind=`*(data: var SQLData, kind: SQLDataType) =
-  data.reset
-  data.kind = kind
-
 proc `$`*(sqlData: SQLData): string =
+  ## Return a string representation of `sqlData`.
   case sqlData.kind
   of dtNull: result = "<NULL>"
   of dtString: result = "" & $sqlData.strVal & ""
@@ -212,6 +205,7 @@ proc `$`*(sqlData: SQLData): string =
   result &= " (" & $sqlData.kind & ")"
 
 proc asInt*(sqlData: SQLData): int =
+  ## Return `sqlData` as an int where possible.
   case sqlData.kind
   of dtNull: result = 0
   of dtString:
@@ -231,6 +225,7 @@ proc asInt*(sqlData: SQLData): int =
   of dtBinary: raise newODBCException("cannot transform binary to int")
 
 proc asInt64*(sqlData: SQLData): int64 =
+  ## Return `sqlData` as an int64 where possible.
   case sqlData.kind
   of dtNull: result = 0
   of dtString:
@@ -249,6 +244,7 @@ proc asInt64*(sqlData: SQLData): int64 =
   of dtBinary: raise newODBCException("cannot transform binary to int64")
 
 proc asFloat*(sqlData: SQLData): float =
+  ## Return `sqlData` as a float where possible.
   case sqlData.kind
   of dtNull: result = 0.0
   of dtString:
@@ -264,6 +260,7 @@ proc asFloat*(sqlData: SQLData): float =
   of dtBinary: raise newODBCException("cannot transform binary to int")
 
 proc asBool*(sqlData: SQLData): bool =
+  ## Return `sqlData` as a boolean where possible.
   case sqlData.kind
   of dtNull: result = false
   of dtString:
@@ -279,6 +276,7 @@ proc asBool*(sqlData: SQLData): bool =
   of dtBinary: raise newODBCException("cannot transform binary to int")
 
 proc asString*(sqlData: SQLData): string =
+  ## Return `sqlData` as a string.
   case sqlData.kind
   of dtNull: result = nullValue
   of dtString: result = sqlData.strVal
@@ -290,6 +288,7 @@ proc asString*(sqlData: SQLData): string =
   of dtBinary: result = $sqlData.binVal
 
 proc asBinary*(sqlData: SQLData): SQLBinaryData =
+  ## Return `sqlData` as a seq[byte] where possible.
   case sqlData.kind
   of dtNull: discard
   of dtString:
@@ -324,10 +323,18 @@ proc asBinary*(sqlData: SQLData): SQLBinaryData =
     for idx, b in sqlData.binVal: result[idx] = b
 
 proc asTimeInterval*(sqlData: SQLData): TimeInterval =
+  ## Return `sqlData` as a time interval where possible.
   if sqlData.kind == dtTime: result = sqlData.timeVal
   else: raise newODBCException("cannot transform " & $sqlData.kind & " to time")
 
+## Check if a value is `null`.
 proc isNull*(sqlData: SQLData): bool = sqlData.kind == dtNull
+
+proc kind*(data: SQLData): SQLDataType {.inline.} = data.kind
+
+proc `kind=`*(data: var SQLData, kind: SQLDataType) =
+  data.reset
+  data.kind = kind
 
 converter toBinary*(sqlData: SQLData): SQLBinaryData = sqlData.asBinary
 converter toString*(sqlData: SQLData): string = sqlData.asString
