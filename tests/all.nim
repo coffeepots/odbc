@@ -93,6 +93,10 @@ for conDetails in connections.mitems:
       # Alternate access through `fields`.
       check res.data(res.fields(0)) == 123
       check res.data(res.fields(1)) == 456
+      check res.data(res.fields("data1")) == 123
+      check res.data(res.fields("data2")) == 456
+      expect ODBCFieldException:
+        discard res.fields("missing")
       # Access through column and row index.
       check res.data(0, 0) == 123
       check res.data(1) == 456

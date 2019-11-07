@@ -35,6 +35,13 @@ proc add*(results: var SQLResults, row: SQLRow) =
 
 proc fields*(results: SQLResults, index: int): SQLField = results.colFields[index]
 
+proc fields*(results: SQLResults, fieldName: string): SQLField =
+  let idx = results.fieldnameIndex.getOrDefault(fieldName.toLowerAscii, -1)
+  if idx >= 0:
+    results.colFields[idx]
+  else:
+    raise newODBCUnknownFieldException("Fieldname not found \"" & fieldName & "\"")
+
 proc len*(results: SQLResults): int = results.rows.len
 
 proc index*(results: SQLResults, name: string): int =
