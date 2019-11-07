@@ -1,4 +1,4 @@
-import odbcsql, odbcerrors, odbcconnections, odbcreporting, odbchandles
+import odbcsql, odbcerrors, odbcconnections, odbcreporting, odbchandles, times
 
 type
   SQLDriverAttribute* = tuple[key, value: string]
@@ -15,6 +15,23 @@ proc `$`*(driverInfos: seq[SQLDriverInfo]): string =
   result = ""
   for di in driverInfos:
     result &= $di & "\n"
+
+proc distributeNanoseconds*(interval: var TimeInterval) =
+  ## Populates fractional components milliseconds and microseconds from nanoseconds,
+  ## and trims nanoseconds.
+  const ms = 1_000_000
+  let
+    ns = interval.nanoseconds
+    msRemaining = ns mod ms
+  interval.milliseconds = ns div ms
+  interval.microseconds = msRemaining div 1_000
+  interval.nanoseconds = msRemaining mod 1_000
+
+proc distributeNanoseconds*(interval: TimeInterval): TimeInterval =
+  ## Populates fractional components milliseconds and microseconds from nanoseconds,
+  ## and trims nanoseconds.
+  result = interval
+  result.distributeNanoseconds
 
 proc listDrivers*(con: ODBCConnection = nil): seq[SQLDriverInfo] =
   const
