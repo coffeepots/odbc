@@ -164,9 +164,14 @@ proc readFromBuf(dataItem: var SQLData, buffer: ParamBuffer, indicator: int) =
   of dtFloat: dataItem.floatVal = cast[ptr float](buffer)[]
   of dtBinary: dataItem.binVal = bufToSeq(buffer, indicator)
   of dtTime:
-    var
-      timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
-    dataItem.timeVal = initTimeInterval(timestamp.Fraction, 0, 0, timestamp.Second, timestamp.Minute, timestamp.Hour,
+    var timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
+    const ms = 1_000_000
+    let
+      milliseconds = timestamp.Fraction div ms
+      microseconds = (timestamp.Fraction mod ms) div 1_000
+      # Nanoseconds is not cropped and contains the full nanoseconds to the nearest second.
+      # Weeks is not populated.
+    dataItem.timeVal = initTimeInterval(timestamp.Fraction, microseconds, milliseconds, timestamp.Second, timestamp.Minute, timestamp.Hour,
         timestamp.Day - 1, 0, timestamp.Month, timestamp.Year) # day is 1 indexed in SQL
   when defined(odbcdebug):
     echo "Read buffer (first 255 bytes): ", repr(cast[ptr array[0..255, byte]](buffer))
