@@ -42,6 +42,12 @@ proc fields*(results: SQLResults, fieldName: string): SQLField =
   else:
     raise newODBCUnknownFieldException("Fieldname not found \"" & fieldName & "\"")
 
+## Fetch the column index for `fieldName`. Raises an exception if the field can't be found.
+proc fieldIndex*(results: SQLResults, fieldName: string): int =
+  result = results.fieldnameIndex.getOrDefault(fieldName.toLowerAscii, -1)
+  if result < 0:
+    raise newODBCUnknownFieldException("field \"" & fieldName & "\" not found in results")
+
 proc len*(results: SQLResults): int = results.rows.len
 
 proc index*(results: SQLResults, name: string): int =

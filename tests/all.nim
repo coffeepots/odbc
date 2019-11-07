@@ -100,6 +100,7 @@ for conDetails in connections.mitems:
       # Access through column and row index.
       check res.data(0, 0) == 123
       check res.data(1) == 456
+      check res.data(res.fieldIndex("data2")) == 456
 
     test "Conditional field access":
       qry.statement = "SELECT 123 as data"
