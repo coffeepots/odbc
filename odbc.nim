@@ -17,7 +17,7 @@ import
   odbc / [odbctypes, odbcerrors, odbcreporting],
   strformat
 
-export odbctypes, odbcreporting
+export odbctypes, odbcreporting, odbcerrors
 
 # this import includes the handles module and also imports odbcerrors
 include
