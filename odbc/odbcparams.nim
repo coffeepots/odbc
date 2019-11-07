@@ -188,8 +188,7 @@ proc writeToBuf(dataItem: SQLData, buffer: ParamBuffer) =
   of dtFloat: cast[ptr float](buffer)[] = dataItem.floatVal
   of dtBinary: dataItem.binVal.seqToBuf(buffer, dataItem.binVal.len)
   of dtTime:
-    var
-      timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
+    var timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
     timestamp.Fraction = dataItem.timeVal.nanoseconds.int32
     timestamp.Second = dataItem.timeVal.seconds.SqlUSmallInt
     timestamp.Minute = dataItem.timeVal.minutes.SqlUSmallInt
@@ -245,7 +244,6 @@ proc dbQuote*(s: string): string =
     else: add(result, c)
   add(result, '\'')
 
-
 proc bindParams*(sqlStatement: var string, params: var SQLParams, rptState: var ODBCReportState) =
   # Parameters: for ApacheDrill we resolve params and clear params collection
   var
@@ -267,8 +265,6 @@ proc bindParams*(sqlStatement: var string, params: var SQLParams, rptState: var 
       sql.add(s)
   params.clear()
   sqlStatement = sql
-
-
 
 proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCReportState) =
   # Parameters: ODBC can't use named parameters, so we need to do a string lookup
@@ -310,7 +306,7 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
     when defined(odbcdebug):
       echo &"Binding slot {idx} (real index {paramIdxRef})"
       echo &" Data Type {curParam.field.dataType}, value type {curParam.field.cType}, param type {curParam.field.sqlType}"
-      echo &" Column size {colSize}, digits {curParam.field.digits}, buffer len {paramDataSize}"
+      echo &" Column size {colSize}, digits {curParam.field.digits}, buffer len {paramDataSize}\n"
 
     var res = SQLBindParameter(handle,
       paramIdx.SqlUSmallInt,
@@ -318,12 +314,12 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
       curParam.field.cType,
       curParam.field.sqlType,
       colSize,                            # column size (for string types this is number of characters)
-      curParam.field.digits.TSqlSmallInt, # digit size
+      curParam.field.digits.TSqlSmallInt, # digit size (scale)
       params.paramBuf[paramIdxRef],       # pointer to data to bind
       paramDataSize,                      # byte count of data
       addr(params.paramIndBuf[paramIdxRef])
       )
-    when defined(odbcdebug): echo &"Param ind after bind is {params.paramIndBuf[paramIdxRef]}"
+    when defined(odbcdebug): echo &"Param ind after bind is {params.paramIndBuf[paramIdxRef]}\n"
     rptOnErr(rptState, res, "SQLBindParameter", handle, SQL_HANDLE_STMT.TSqlSmallInt)
 
     paramIdx += 1
