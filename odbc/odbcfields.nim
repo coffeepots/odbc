@@ -24,7 +24,6 @@ type
   SQLResults* = object
     fieldnameIndex: FieldIdxs
     colFields: seq[SQLField]
-    fieldNames: Table[string, int]
     rows*: seq[SQLRow]
     curRow*: int
 
@@ -36,43 +35,64 @@ proc add*(results: var SQLResults, row: SQLRow) =
 
 proc fields*(results: SQLResults, index: int): SQLField = results.colFields[index]
 
-proc len*(results: SQLResults): int = results.rows.len
-
-proc fromField*(results: SQLResults, name: string, rowIdx = -1): SQLData =
-  let idx = results.fieldnames[name]
-  if rowIdx == -1:
-    result = results.rows[results.curRow][idx]
+proc fields*(results: SQLResults, fieldName: string): SQLField =
+  let idx = results.fieldnameIndex.getOrDefault(fieldName.toLowerAscii, -1)
+  if idx >= 0:
+    results.colFields[idx]
   else:
-    result = results.rows[rowIdx][idx]
-    
-proc index*(results: SQLResults, name: string): int =
-  result = results.fieldnames[name]
-
-proc data*(results: var SQLResults, fieldName: string, rowIdx: int = -1): SQLData =
-  # table.withValue(key, value) do:
-  results.fieldnameIndex.withValue(fieldName.toLowerAscii, fldIdx) do:
-    # value found
-    if rowIdx < 0:
-      result = results[results.curRow][fldIdx[]] 
-    else:
-      result = results[rowIdx][fldIdx[]]
-  do:
-    # fieldname not found
     raise newODBCUnknownFieldException("Fieldname not found \"" & fieldName & "\"")
 
-proc data*(results: var SQLResults, field: SQLField): SQLData =
+## Fetch the column index for `fieldName`. Raises an exception if the field can't be found.
+proc fieldIndex*(results: SQLResults, fieldName: string): int =
+  result = results.fieldnameIndex.getOrDefault(fieldName.toLowerAscii, -1)
+  if result < 0:
+    raise newODBCUnknownFieldException("field \"" & fieldName & "\" not found in results")
+
+proc len*(results: SQLResults): int = results.rows.len
+
+proc index*(results: SQLResults, name: string): int =
+  result = results.fieldnameIndex[name]
+
+proc tryData*(results: SQLResults, fieldName: string, rowIdx: int, value: var SQLData): bool {.inline.} =
+  ## Populates `value` if the field exists and returns true. If the field can't be found, returns false.
+  ## If `rowIdx` < 0, `results`.curRow is used.
+  let idx = results.fieldnameIndex.getOrDefault(fieldName.toLowerAscii, -1)
+  if idx < 0: return
+  if rowIdx < 0:
+    value = results[results.curRow][idx]
+  else:
+    value = results[rowIdx][idx]
+  true
+
+## Populates `value` from the current row if the field exists and returns true, otherwise returns false.
+template tryData*(results: SQLResults, fieldName: string, value: var SQLData): bool = results.tryData(fieldName, results.curRow, value)
+
+## Check by name to see if a result set contains a field.
+proc hasField*(results: SQLResults, fieldName: string): bool = results.fieldnameIndex.getOrDefault(fieldName.toLowerAscii, -1) != -1
+
+proc data*(results: SQLResults, fieldName: string, rowIdx: int = -1): SQLData =
+  ## Return the SQLData associated with a field and row in `results`.
+  ## If the field can't be found, an exception is raised.
+  if not results.tryData(fieldName, rowIdx, result):
+    raise newODBCUnknownFieldException("Fieldname not found \"" & fieldName & "\"")
+
+proc data*(results: SQLResults, field: SQLField): SQLData =
   result = results[results.curRow][field.colIndex] 
 
-proc data*(results: var SQLResults, field: SQLField, rowIndex: int): SQLData =
+proc data*(results: SQLResults, field: SQLField, rowIndex: int): SQLData =
   result = results[rowIndex][field.colIndex] 
-    
+
+template data*(results: SQLResults, columnIndex: Natural): SQLData = results[results.curRow][columnIndex]
+template data*(results: SQLResults, columnIndex: Natural, rowIndex: Natural): SQLData = results[rowIndex][columnIndex]
+
+template fromField*(results: SQLResults, name: string, rowIdx = -1): SQLData {.deprecated: "use `data` instead".} = results.data(name, rowIdx)
+
 proc initSQLRow*: SQLRow =
   result = @[]
 
 proc initSQLResults*: SQLResults =
   result.rows = @[]
   result.colFields = @[]
-  result.fieldNames = initTable[string, int]()
   result.fieldnameIndex = initFieldIdxs()
 
 proc next*(results: var SQLResults) =

@@ -6,21 +6,28 @@ var
   iniSettings: IniFile
   iniPath = getCurrentDir().joinPath("DBConnect.ini")
 
+#[
+
+Below we load database properties from an inifile.
+You can set these properties manually for your own database,
+or if you want to use the wininifiles module, here is an example layout:
+
+  [Database]
+  HostName=MyDBHost
+  Database=MyDatabaseName
+  UserName=MyUsername
+  Password=MyPassword
+  WinAuth=0
+
+Any database with access to run queries and create temporary tables can
+be used to run these tests.
+
+]#
+
 if not iniPath.fileExists: iniPath = getCurrentDir().joinPath("tests").joinPath("DBConnect.ini")
 if not iniSettings.loadIni(iniPath):
   echo "Could not find ini file ", iniSettings.filename
   quit()
-
-# Here we load database properties from an inifile.
-# You can set these properties manually, or if you want to use
-# the wininifiles module, here is an example layout:
-#
-# [Database]
-# HostName=MyDBHost
-# Database=MyDatabaseName
-# UserName=MyUsername
-# Password=MyPassword
-# WinAuth=0
 
 var connections = newSeq[tuple[name: string, connection: ODBCConnection]]()
 
@@ -62,6 +69,11 @@ for conDetails in connections.mitems:
   else:
     echo "Success, connected to host \"" & con.host & "\", database \"" & con.database & "\""
 
+  suite "Utilities":
+    test "List drivers":
+      # Can't be automatically checked.
+      echo con.listDrivers
+
   suite "Parameter tests (" & conDetails.name & ")":
 
     test "Simple parameters":
@@ -73,13 +85,51 @@ for conDetails in connections.mitems:
       check res[0][0].intVal == 5
       check res[0][1].intVal == 1
 
-    # TODO: Times loses nanoseconds when converted to SQL time
+    test "Accessing field data":
+      qry.statement = "SELECT 123 as data1, 456 as data2"
+      res = qry.executeFetch
+      let data = res.data("data1")
+      check data == 123
+      # Alternate access through `fields`.
+      check res.data(res.fields(0)) == 123
+      check res.data(res.fields(1)) == 456
+      check res.data(res.fields("data1")) == 123
+      check res.data(res.fields("data2")) == 456
+      expect ODBCFieldException:
+        discard res.fields("missing")
+      # Access through column and row index.
+      check res.data(0, 0) == 123
+      check res.data(1) == 456
+      check res.data(res.fieldIndex("data2")) == 456
+
+    test "Conditional field access":
+      qry.statement = "SELECT 123 as data"
+      res = qry.executeFetch
+      var data: SQLData
+      check res.tryData("data", data)
+      check data == 123
+      data.reset
+      check not res.tryData("doota", data)
+      check data.kind == dtNull
+      check res.hasField("data")
+      check not res.hasField("doota")
+
     test "Times":
       let curTime = getTime()
       qry.statement = "SELECT ?a"
       qry.params["a"] = curTime
       res = qry.executeFetch
-      check res[0][0].timeVal == curTime.toTimeInterval
+      let timeVal = res[0][0].timeVal
+      let curTimeInterval =
+        when defined(odbcRawTimes):
+          curTime.toTimeInterval
+        else:
+          # toTimeInterval doesn't set up milli/microseconds for us so for comparison we do this manually.
+          curTime.toTimeInterval.distributeNanoseconds
+      echo curTimeInterval
+      # Here we can directly compare to the nanosecond level because the date time value
+      # is not being converted and so does not lose precision.
+      check timeVal == curTimeInterval
 
     test "Nulls":
       qry.statement = "SELECT ?a"
@@ -98,7 +148,7 @@ for conDetails in connections.mitems:
       res = qry.executeFetch
       check res[0][0] == 4611686018427387904
       qry.statement = "SELECT ?a"
-      template testData: auto = pow(2.float64, 68.float64)
+      const testData = pow(2.float64, 68.float64)
       qry.params["a"] = testData
       res = qry.executeFetch
       check res[0][0] == testData
@@ -114,12 +164,17 @@ for conDetails in connections.mitems:
     test "Insert and Read":
       qry.statement = """
       SET NOCOUNT ON
-      CREATE TABLE #Temp (Name Varchar(255), textval varchar(255), intval int, timeval DateTime, boolval bit)
+      CREATE TABLE #Temp (Name Varchar(255), textval varchar(255), intval int, timeval DateTime2, boolval bit)
       INSERT INTO #Temp VALUES (?name, ?textval, ?intval, ?timeval, ?boolval)
       SELECT * FROM #Temp
       DROP TABLE #Temp
       """
-      let curTime = getTime().toTimeInterval
+      let curTime = 
+        when defined(odbcRawTimes):
+          getTime().toTimeInterval
+        else:
+          # toTimeInterval doesn't set up milli/microseconds for us so for comparison we do this manually.
+          getTime().toTimeInterval.distributeNanoseconds
       qry.params["name"] = "testy"
       qry.params["textval"] = " testing "
       qry.params["intval"] = 99
@@ -132,11 +187,22 @@ for conDetails in connections.mitems:
       check res[0][0] == "testy"
       check res[0][1] == " testing "
       check res[0][2] == 99
-      # TODO: Time loses nanoseconds
-      #check res[0][3].timeVal == curTime
+      # Depending on the database's precision, milliseconds and below may be zero or
+      # a slightly different value to the one passed to the query. In this case a direct
+      # comparison will fail. Set the following to `false` to perform checks up to the 
+      # nearest second.
+      when true:
+        # Comparison up to nanosecond precision.
+        check res.data("timeVal", 0).timeVal == curTime
+      else:
+        # Checking up to one second difference from input.
+        let timeDiff = curTime - res.data("timeVal").timeVal
+        check:
+          timeDiff.years == 0 and timeDiff.months == 0 and timeDiff.weeks == 0
+          timeDiff.days == 0 and timeDiff.minutes == 0 and timeDiff.seconds < 1
+
       check res[0][4] == true
-      check res.data(res.fields(0)) == "testy"
-      
+
     test "Volume Parameters":
       qry.statement = "SELECT ?id"
       var row: SQLRow

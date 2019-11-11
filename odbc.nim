@@ -17,7 +17,7 @@ import
   odbc / [odbctypes, odbcerrors, odbcreporting],
   strformat
 
-export odbctypes, odbcreporting
+export odbctypes, odbcreporting, odbcerrors
 
 # this import includes the handles module and also imports odbcerrors
 include
@@ -177,8 +177,6 @@ proc fetch*(qry: SQLQuery): SQLResults =
   # copy over fields as they'll be the same as the query
   # Note that colIndex should already be set up and match our result columns
   result.colFields = qry.colFields
-  for i in 0 ..< qry.colFields.len:
-    result.fieldnames.add(qry.colFields[i].fieldname, i)
   var newRow = initSQLRow()
   while qry.fetchRow(newRow):
     result.add(newRow)

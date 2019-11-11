@@ -8,6 +8,8 @@ var
   # This is settable by the user.
   sqlDefaultBufferSize* = 255
 
+const ms = 1_000_000
+
 type
   # This is used to cast pointers for easier access
   SQLByteArrayUC = ptr UncheckedArray[byte]
@@ -119,6 +121,33 @@ proc clear*(params: var SQLParams, index: string) =
   curParam.data.kind = dtNull
   params[paramName] = curParam
 
+proc distributeNanoseconds*(interval: var TimeInterval) =
+  ## Populates fractional components milliseconds and microseconds from nanoseconds,
+  ## and trims nanoseconds.
+  let
+    ns = interval.nanoseconds
+    msRemaining = ns mod ms
+  interval.milliseconds = ns div ms
+  interval.microseconds = msRemaining div 1_000
+  interval.nanoseconds = msRemaining mod 1_000
+
+proc distributeNanoseconds*(interval: TimeInterval): TimeInterval =
+  ## Populates fractional components milliseconds and microseconds from nanoseconds,
+  ## and trims nanoseconds.
+  result = interval
+  result.distributeNanoseconds
+
+proc distributeNanoseconds*(timeStamp: SQL_TIMESTAMP_STRUCT_FRACTFIX): TimeInterval =
+  ## Populates fractional components milliseconds and microseconds from nanoseconds,
+  ## and trims nanoseconds.
+  result = initTimeInterval(
+    timeStamp.Fraction, 0, 0, timestamp.Second, timestamp.Minute, timestamp.Hour,
+    timestamp.Day - 1, 0, timestamp.Month, timestamp.Year)
+  result.distributeNanoseconds
+
+template stuffNanoseconds*(interval: TimeInterval): int =
+  interval.nanoseconds + interval.microseconds * 1_000 + interval.milliseconds * ms
+
 proc bufWideStrToStr(buffer: pointer, count: int): string {.inline.} =
   # SQL Server uses widestring for unicode
   var
@@ -164,10 +193,15 @@ proc readFromBuf(dataItem: var SQLData, buffer: ParamBuffer, indicator: int) =
   of dtFloat: dataItem.floatVal = cast[ptr float](buffer)[]
   of dtBinary: dataItem.binVal = bufToSeq(buffer, indicator)
   of dtTime:
-    var
-      timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
-    dataItem.timeVal = initTimeInterval(timestamp.Fraction, 0, 0, timestamp.Second, timestamp.Minute, timestamp.Hour,
-        timestamp.Day - 1, 0, timestamp.Month, timestamp.Year) # day is 1 indexed in SQL
+    var timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
+    # The `weeks` field is not populated.
+    when defined(odbcRawTimes):
+      # Don't populate milliseconds/microseconds, and nanoseconds is the uncropped full fraction component.
+      dataItem.timeVal = initTimeInterval(timestamp.Fraction, 0, 0, timestamp.Second, timestamp.Minute, timestamp.Hour,
+          timestamp.Day - 1, 0, timestamp.Month, timestamp.Year)  # day is 1 indexed in SQL
+    else:
+      # Default behaviour is to populate milliseconds, microseconds and nanoseconds.
+      dataItem.timeVal = distributeNanoseconds(timestamp[])
   when defined(odbcdebug):
     echo "Read buffer (first 255 bytes): ", repr(cast[ptr array[0..255, byte]](buffer))
 
@@ -183,13 +217,15 @@ proc writeToBuf(dataItem: SQLData, buffer: ParamBuffer) =
   of dtFloat: cast[ptr float](buffer)[] = dataItem.floatVal
   of dtBinary: dataItem.binVal.seqToBuf(buffer, dataItem.binVal.len)
   of dtTime:
-    var
-      timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
-    timestamp.Fraction = dataItem.timeVal.nanoseconds.int32
+    var timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
+    when not defined(odbcRawTimes):
+      timestamp.Fraction = dataItem.timeVal.stuffNanoseconds.int32
+    else:
+      timestamp.Fraction = dataItem.timeVal.nanoseconds.int32
     timestamp.Second = dataItem.timeVal.seconds.SqlUSmallInt
     timestamp.Minute = dataItem.timeVal.minutes.SqlUSmallInt
     timestamp.Hour = dataItem.timeVal.hours.SqlUSmallInt
-    timestamp.Day = dataItem.timeVal.days.SqlUSmallInt + 1  # day is 1 indexed in SQL
+    timestamp.Day = dataItem.timeVal.days.SqlUSmallInt + 1    # day is 1 indexed in SQL
     timestamp.Month = dataItem.timeVal.months.SqlUSmallInt
     timestamp.Year = dataItem.timeVal.years.SqlUSmallInt
   when defined(odbcdebug):
@@ -240,7 +276,6 @@ proc dbQuote*(s: string): string =
     else: add(result, c)
   add(result, '\'')
 
-
 proc bindParams*(sqlStatement: var string, params: var SQLParams, rptState: var ODBCReportState) =
   # Parameters: for ApacheDrill we resolve params and clear params collection
   var
@@ -262,8 +297,6 @@ proc bindParams*(sqlStatement: var string, params: var SQLParams, rptState: var 
       sql.add(s)
   params.clear()
   sqlStatement = sql
-
-
 
 proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCReportState) =
   # Parameters: ODBC can't use named parameters, so we need to do a string lookup
@@ -305,7 +338,7 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
     when defined(odbcdebug):
       echo &"Binding slot {idx} (real index {paramIdxRef})"
       echo &" Data Type {curParam.field.dataType}, value type {curParam.field.cType}, param type {curParam.field.sqlType}"
-      echo &" Column size {colSize}, digits {curParam.field.digits}, buffer len {paramDataSize}"
+      echo &" Column size {colSize}, digits {curParam.field.digits}, buffer len {paramDataSize}\n"
 
     var res = SQLBindParameter(handle,
       paramIdx.SqlUSmallInt,
@@ -313,12 +346,12 @@ proc bindParams(handle: SqlHStmt, params: var SQLParams, rptState: var ODBCRepor
       curParam.field.cType,
       curParam.field.sqlType,
       colSize,                            # column size (for string types this is number of characters)
-      curParam.field.digits.TSqlSmallInt, # digit size
+      curParam.field.digits.TSqlSmallInt, # digit size (scale)
       params.paramBuf[paramIdxRef],       # pointer to data to bind
       paramDataSize,                      # byte count of data
       addr(params.paramIndBuf[paramIdxRef])
       )
-    when defined(odbcdebug): echo &"Param ind after bind is {params.paramIndBuf[paramIdxRef]}"
+    when defined(odbcdebug): echo &"Param ind after bind is {params.paramIndBuf[paramIdxRef]}\n"
     rptOnErr(rptState, res, "SQLBindParameter", handle, SQL_HANDLE_STMT.TSqlSmallInt)
 
     paramIdx += 1

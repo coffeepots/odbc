@@ -317,7 +317,12 @@ proc asBinary*(sqlData: SQLData): SQLBinaryData =
     result.setLen floatSize
     for idx, b in buf:
       result[idx] = b
-  of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to binary")
+  of dtTime:
+    const timeSize = sqlData.timeVal.sizeOf
+    var buf = cast[array[timeSize, byte]](sqlData.timeVal)
+    result.setLen timeSize
+    for idx, b in buf:
+      result[idx] = b
   of dtBinary:
     result.setLen sqlData.binVal.len
     for idx, b in sqlData.binVal: result[idx] = b

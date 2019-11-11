@@ -1,7 +1,7 @@
-import odbcsql, odbcerrors, odbcconnections, odbcreporting, odbchandles
+import odbcsql, odbcerrors, odbcconnections, odbcreporting, odbchandles, times
 
 type
-  SQLDriverAttribute = tuple[key, value: string]
+  SQLDriverAttribute* = tuple[key, value: string]
   SQLDriverInfo* = object
     driver*: string
     attributes*: seq[SQLDriverAttribute]
@@ -45,9 +45,8 @@ proc listDrivers*(con: ODBCConnection = nil): seq[SQLDriverInfo] =
 
   direction = SQL_FETCH_FIRST
 
-  ret = SQLDrivers(env, direction,
-             driver.cstring, driverBufLen.TSqlSmallInt, addr driver_ret,
-             attr.cstring, attrBufLen.TSqlSmallInt, addr attr_ret)
+  ret = SQLDrivers(env, direction, driver.cstring, driverBufLen.TSqlSmallInt,
+    addr driver_ret, attr.cstring, attrBufLen.TSqlSmallInt, addr attr_ret)
   rptOnErr(rpt, ret, "sqlDrivers", env)
 
   while ret == SQL_SUCCESS or ret == SQL_SUCCESS_WITH_INFO:
@@ -82,8 +81,9 @@ proc listDrivers*(con: ODBCConnection = nil): seq[SQLDriverInfo] =
 
     direction = SQL_FETCH_NEXT
     result.add(newDriverInfo)
-    ret = SQLDrivers(env, direction,
-               driver, driverBufLen.TSqlSmallInt, addr driver_ret,
-               attr, attrBufLen.TSqlSmallInt, addr attr_ret)
+
+    ret = SQLDrivers(env, direction, driver, driverBufLen.TSqlSmallInt,
+      addr driver_ret, attr, attrBufLen.TSqlSmallInt, addr attr_ret)
+
   freeEnvHandle(env, rpt)
 
