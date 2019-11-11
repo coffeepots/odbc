@@ -140,20 +140,65 @@ SQLData elements are a variant object, and can be of several different types.
 * int64Val: Int64
 * boolVal: Bool
 * floatVal: Float
-* timeVal: Time. This is of timeInterval type so we can store milliseconds.
-* binVal: Binary. Stored as a seq[byte].
+* timeVal: Time. Stored as `TimeInterval`.
+* binVal: Binary. Stored as a `seq[byte]`.
 
-Data from a result set can be accessed via field with the fieldData proc:
+Data from a result set can be accessed directly using indexes.
 
-  var data = results.fieldData(fieldnameString, rowIdx)
+    let data = results[rowIdx][columnIdx]
 
-If you don't specify a rowIdx (or provide a value < 0) the data is retrieved from the row indicated by the results.curRow variable
+Alternatively, data can be accessed via field name with the `data` procs:
 
-Alternatively, data can be access directly via:
+    let
+      # Via numeric indexes
+      data1 = results.data(columnIndex)               # Use current row (results.curRow)
+      data2 = results.data(columnIndex, rowIndex)     # This is the same as results[rowIdx][columnIdx]
 
-  var data = results[rowIdx][columnIdx]
+      # Via field names
+      data3 = results.data(fieldnameString)
+      data4 = results.data(fieldnameString, rowIdx)
+    
+SQLResults also allows working with SQLFields via the `fields` procs.
 
+    let
+      # Fields can be retreived by column index or name.
+      fieldCol5 = results.fields(5)
+      myField = results.fields(fieldnameString)
 
+      # Access the data via SQLField for the current row.
+      data5 = results.data(fieldCol5)
+      myData = results.data(myField)
+      
+      # Access by SQlQField and row index.
+      data5AtRow = results.data(fieldCol5, rowIdx)
+      myDataAtRow = results.data(myField, rowIdx)
+
+#### Working with fields ####
+
+For large result sets, performing many calls to `data` with a string fieldname parameter is wasteful
+due to having to perform a hash table lookup with the field string each time.
+
+Fetching fields or field indexes allows faster processing:
+
+    let
+      results = myQuery.executeFetch
+      myField = results.fields("MyField")
+      
+    for i in 0 ..< results.len:
+      let data = results.data(myField, i)
+      # ... 
+
+Alternatively you can fetch the column index directly using `fieldIndex`:
+
+    let
+      results = myQuery.executeFetch
+      myFieldColIdx = results.fieldIndex("MyField")
+      
+    for i in 0 ..< results.len:
+      let data1 = results.data(myFieldColIdx, i)
+      # or
+      let data2 = results[i][myFieldColIdx]
+      # ... 
 
 #### Data conversions
 
