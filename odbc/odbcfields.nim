@@ -65,7 +65,10 @@ proc tryData*(results: SQLResults, fieldName: string, rowIdx: int, value: var SQ
   true
 
 ## Populates `value` from the current row if the field exists and returns true, otherwise returns false.
-template tryData*(results: SQLResults, fieldName: string, value: var SQLData): bool = results.tryData(fieldName, results.curRow, value)    
+template tryData*(results: SQLResults, fieldName: string, value: var SQLData): bool = results.tryData(fieldName, results.curRow, value)
+
+## Check by name to see if a result set contains a field.
+proc hasField*(results: SQLResults, fieldName: string): bool = results.fieldnameIndex.getOrDefault(fieldName.toLowerAscii, -1) != -1
 
 proc data*(results: SQLResults, fieldName: string, rowIdx: int = -1): SQLData =
   ## Return the SQLData associated with a field and row in `results`.

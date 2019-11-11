@@ -140,7 +140,6 @@ proc distributeNanoseconds*(interval: TimeInterval): TimeInterval =
 proc distributeNanoseconds*(timeStamp: SQL_TIMESTAMP_STRUCT_FRACTFIX): TimeInterval =
   ## Populates fractional components milliseconds and microseconds from nanoseconds,
   ## and trims nanoseconds.
-  echo "<", timeStamp.Fraction
   result = initTimeInterval(
     timeStamp.Fraction, 0, 0, timestamp.Second, timestamp.Minute, timestamp.Hour,
     timestamp.Day - 1, 0, timestamp.Month, timestamp.Year)
