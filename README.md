@@ -18,7 +18,7 @@ Connections can be initialised as follows:
     if not con.connect:
       echo "Could not connect to database."
 
-Connection authentication can be set to "integrated security", which will use your current security context (in Windows), or you can specify a username and password manaully.
+Connection authentication can be set to "integrated security", which will use your current security context (in Windows), or you can specify a username and password manually.
 
     con.integratedSecurity = true # Use your current logged on Windows user to access the database.
 
@@ -61,14 +61,14 @@ Information that is reported can be set to multiple destinations.
 
 Destination options are:
 * rdStore: Stores any messages in the connection under reporting.messages, which is a seq[string].
-* rdEcho: Echos messages to the display.
+* rdEcho: `echo` messages to the display.
 * rdFile: Stores messages in a file. The filename is defined under the connection in reporting.filename.
 * rdCallBack: Passes any messages to a custom procedure you may assign to the connection under reporting.callBack
 
 By default, reporting is set to rdEcho.
 
     con.reporting.level = rlErrorsAndInfo           # Will report any errors and also relevant database information
-    con.reporting.destinations = {rdStore, rdEcho}  # Stores in con.reporting.messages and echos them to the display
+    con.reporting.destinations = {rdStore, rdEcho}  # Stores in con.reporting.messages and echoes them to the display
 
 #### Transactions
 
@@ -116,7 +116,7 @@ or in one go with the fetch proc:
 
 #### withExecute
 
-This is a template that allows you to process each row, and is equivilent to opening a query and performing fetchRow, then calling close when the query's data has been depleted.
+This is a template that allows you to process each row, and is equivalent to opening a query and performing fetchRow, then calling close when the query's data has been depleted.
 
     qry.withExecute(row):
       # the variable, in this case 'row', within the brackets above is declared as SQLRow within the template
@@ -161,7 +161,7 @@ Alternatively, data can be accessed via field name with the `data` procs:
 SQLResults also allows working with SQLFields via the `fields` procs.
 
     let
-      # Fields can be retreived by column index or name.
+      # Fields can be retrieved by column index or name.
       fieldCol5 = results.fields(5)
       myField = results.fields(fieldnameString)
 
