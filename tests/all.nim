@@ -111,6 +111,8 @@ for conDetails in connections.mitems:
       data.reset
       check not res.tryData("doota", data)
       check data.kind == dtNull
+      check res.hasField("data")
+      check not res.hasField("doota")
 
     test "Times":
       let curTime = getTime()
