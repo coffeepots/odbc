@@ -8,6 +8,8 @@ var
   # This is settable by the user.
   sqlDefaultBufferSize* = 255
 
+const ms = 1_000_000
+
 type
   # This is used to cast pointers for easier access
   SQLByteArrayUC = ptr UncheckedArray[byte]
@@ -119,6 +121,34 @@ proc clear*(params: var SQLParams, index: string) =
   curParam.data.kind = dtNull
   params[paramName] = curParam
 
+proc distributeNanoseconds*(interval: var TimeInterval) =
+  ## Populates fractional components milliseconds and microseconds from nanoseconds,
+  ## and trims nanoseconds.
+  let
+    ns = interval.nanoseconds
+    msRemaining = ns mod ms
+  interval.milliseconds = ns div ms
+  interval.microseconds = msRemaining div 1_000
+  interval.nanoseconds = msRemaining mod 1_000
+
+proc distributeNanoseconds*(interval: TimeInterval): TimeInterval =
+  ## Populates fractional components milliseconds and microseconds from nanoseconds,
+  ## and trims nanoseconds.
+  result = interval
+  result.distributeNanoseconds
+
+proc distributeNanoseconds*(timeStamp: SQL_TIMESTAMP_STRUCT_FRACTFIX): TimeInterval =
+  ## Populates fractional components milliseconds and microseconds from nanoseconds,
+  ## and trims nanoseconds.
+  echo "<", timeStamp.Fraction
+  result = initTimeInterval(
+    timeStamp.Fraction, 0, 0, timestamp.Second, timestamp.Minute, timestamp.Hour,
+    timestamp.Day - 1, 0, timestamp.Month, timestamp.Year)
+  result.distributeNanoseconds
+
+template stuffNanoseconds*(interval: TimeInterval): int =
+  interval.nanoseconds + interval.microseconds * 1_000 + interval.milliseconds * ms
+
 proc bufWideStrToStr(buffer: pointer, count: int): string {.inline.} =
   # SQL Server uses widestring for unicode
   var
@@ -166,20 +196,13 @@ proc readFromBuf(dataItem: var SQLData, buffer: ParamBuffer, indicator: int) =
   of dtTime:
     var timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
     # The `weeks` field is not populated.
-    when defined(rawTimes):
+    when defined(odbcRawTimes):
       # Don't populate milliseconds/microseconds, and nanoseconds is the uncropped full fraction component.
       dataItem.timeVal = initTimeInterval(timestamp.Fraction, 0, 0, timestamp.Second, timestamp.Minute, timestamp.Hour,
-          timestamp.Day - 1, 0, timestamp.Month, timestamp.Year) # day is 1 indexed in SQL
+          timestamp.Day - 1, 0, timestamp.Month, timestamp.Year)  # day is 1 indexed in SQL
     else:
       # Default behaviour is to populate milliseconds, microseconds and nanoseconds.
-      const ms = 1e6.int
-      let
-        milliseconds = timestamp.Fraction div ms
-        msRemaining = timestamp.Fraction mod ms
-        microseconds = msRemaining div 1_000
-        nanoseconds = msRemaining mod 1_000
-      dataItem.timeVal = initTimeInterval(nanoseconds, microseconds, milliseconds, timestamp.Second, timestamp.Minute, timestamp.Hour,
-          timestamp.Day - 1, 0, timestamp.Month, timestamp.Year) # day is 1 indexed in SQL
+      dataItem.timeVal = distributeNanoseconds(timestamp[])
   when defined(odbcdebug):
     echo "Read buffer (first 255 bytes): ", repr(cast[ptr array[0..255, byte]](buffer))
 
@@ -196,11 +219,14 @@ proc writeToBuf(dataItem: SQLData, buffer: ParamBuffer) =
   of dtBinary: dataItem.binVal.seqToBuf(buffer, dataItem.binVal.len)
   of dtTime:
     var timestamp = cast[ptr SQL_TIMESTAMP_STRUCT_FRACTFIX](buffer)
-    timestamp.Fraction = dataItem.timeVal.nanoseconds.int32
+    when not defined(odbcRawTimes):
+      timestamp.Fraction = dataItem.timeVal.stuffNanoseconds.int32
+    else:
+      timestamp.Fraction = dataItem.timeVal.nanoseconds.int32
     timestamp.Second = dataItem.timeVal.seconds.SqlUSmallInt
     timestamp.Minute = dataItem.timeVal.minutes.SqlUSmallInt
     timestamp.Hour = dataItem.timeVal.hours.SqlUSmallInt
-    timestamp.Day = dataItem.timeVal.days.SqlUSmallInt + 1  # day is 1 indexed in SQL
+    timestamp.Day = dataItem.timeVal.days.SqlUSmallInt + 1    # day is 1 indexed in SQL
     timestamp.Month = dataItem.timeVal.months.SqlUSmallInt
     timestamp.Year = dataItem.timeVal.years.SqlUSmallInt
   when defined(odbcdebug):

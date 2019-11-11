@@ -119,7 +119,7 @@ for conDetails in connections.mitems:
       res = qry.executeFetch
       let timeVal = res[0][0].timeVal
       let curTimeInterval =
-        when defined(rawTimes):
+        when defined(odbcRawTimes):
           curTime.toTimeInterval
         else:
           # toTimeInterval doesn't set up milli/microseconds for us so for comparison we do this manually.
@@ -168,7 +168,7 @@ for conDetails in connections.mitems:
       DROP TABLE #Temp
       """
       let curTime = 
-        when defined(rawTimes):
+        when defined(odbcRawTimes):
           getTime().toTimeInterval
         else:
           # toTimeInterval doesn't set up milli/microseconds for us so for comparison we do this manually.
@@ -191,10 +191,10 @@ for conDetails in connections.mitems:
       # nearest second.
       when true:
         # Comparison up to nanosecond precision.
-        check res[0][3].timeVal == curTime
+        check res.data("timeVal", 0).timeVal == curTime
       else:
         # Checking up to one second difference from input.
-        let timeDiff = curTime - res[0][3].timeVal
+        let timeDiff = curTime - res.data("timeVal").timeVal
         check:
           timeDiff.years == 0 and timeDiff.months == 0 and timeDiff.weeks == 0
           timeDiff.days == 0 and timeDiff.minutes == 0 and timeDiff.seconds < 1
