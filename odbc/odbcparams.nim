@@ -48,6 +48,11 @@ proc initParams*: SQLParams =
 proc initParam*: SQLParam =
   result.field = newSQLField()
 
+proc initParam*[T](value: T): SQLParam =
+  result.field = newSQLField()
+  result.field.setType(value)
+  result.data = initSQLData[value.type](value)
+
 proc len*(params: SQLParams): int =
   result = params.items.len
 
@@ -60,7 +65,7 @@ proc freeParamBufs(params: var SQLParams) =
     for item in params.paramBuf:
       if item != nil:
         dealloc(item)
-    params.paramBuf = @[]
+    params.paramBuf.setLen 0
 
 proc `[]`*(params: SQLParams, index: int): SQLParam =
   result = params.items[index]
@@ -285,11 +290,11 @@ proc bindParams*(sqlStatement: var string, params: var SQLParams, rptState: var 
     if s == '?':
       case params[idx].data.kind:
         of dtString,
-           dtTime : sql.add(dbQuote(params[idx].data.strVal))
-        of dtInt  : sql.add(params[idx].data.intVal)
-        of dtInt64: sql.add(params[idx].data.int64Val)
-        of dtBool : sql.add($params[idx].data.boolVal)
-        of dtFloat: sql.add(params[idx].data.floatVal)
+           dtTime : sql &= dbQuote(params[idx].data.strVal)
+        of dtInt  : sql &= $params[idx].data.intVal
+        of dtInt64: sql &= $params[idx].data.int64Val
+        of dtBool : sql &= $params[idx].data.boolVal
+        of dtFloat: sql &= $params[idx].data.floatVal
         else:
            rptState.odbcLog(&"SQLBindParameter : No handler for param type {$params[idx].data.kind}, value {$params[idx].data}")
       inc idx

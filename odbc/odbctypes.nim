@@ -338,8 +338,7 @@ proc isNull*(sqlData: SQLData): bool = sqlData.kind == dtNull
 proc kind*(data: SQLData): SQLDataType {.inline.} = data.kind
 
 proc `kind=`*(data: var SQLData, kind: SQLDataType) =
-  data.reset
-  data.kind = kind
+  data = SQLData(kind: kind)
 
 converter toBinary*(sqlData: SQLData): SQLBinaryData = sqlData.asBinary
 converter toString*(sqlData: SQLData): string = sqlData.asString

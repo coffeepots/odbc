@@ -215,6 +215,35 @@ proc odbcStatement*(qry: var SQLQuery): string =
   ## Read current statement as ODBC sees it. Named parameters are replaced with `?`.
   qry.fOdbcStatement
 
+proc newQuery*(con: ODBCConnection, statement: string): SQLQuery =
+  result = con.newQuery
+  result.statement = statement
+
+import macros
+
+macro dbq*(con: ODBCConnection, queryText: string, params: varargs[tuple[name: string, value: untyped]]): untyped =
+  ## Allows disposable queries that return results then free themselves.
+  ## eg; let tabData = connnections.dbq("SELECT * from ?table", ("table", myTab))
+  result = newStmtList()
+  let
+    query = ident "query"
+  var paramUpdates = newStmtList()
+  for param in params:
+    paramUpdates.add(quote do:
+      let param = `param`
+      `query`.params[param[0]] = param[1]
+    )
+  result.add(quote do:
+    var
+      r: SQLResults
+      `query` = con.newQuery(`queryText`)
+    try:
+      `paramUpdates`
+      r = `query`.executeFetch
+    finally:
+      `query`.freeQuery
+    r
+  )
 
 template setup(qry: var SQLQuery) =
   # if not already set up, allocates memory and a new statement handle
@@ -313,6 +342,13 @@ proc executeFetch*(qry: var SQLQuery): SQLResults =
       result = initSQLResults()
   finally:
     qry.close
+
+proc executeFetch*(con: ODBCConnection, sql: string): SQLResults =
+  var query = con.newQuery(sql)
+  try:
+    result = query.executeFetch
+  finally:
+    query.freeQuery
 
 proc execute*(qry: var SQLQuery) =
   ## Execute query and ignore results.
