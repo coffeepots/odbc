@@ -32,10 +32,10 @@ type
     handle: SqlHStmt
     # statement is handled by a property getter/setter as setting the statement
     # triggers a search for parameters
-    statement: string
+    fStatement: string
     # This is the statement with "?name" replaced with "?" (ODBC doesn't allow named parameters)
     # odbcStatement is set up when the statement is set
-    odbcStatement: string
+    fOdbcStatement: string
     # metadata for result columns
     colFields: seq[SQLField]
     # dataBuf is the default buffer for reading data from ODBC for processing
@@ -53,16 +53,21 @@ type
   # Main query object
   SQLQuery* = ref SQLQueryObj
 
-proc freeQuery(qry: SQLQuery) =
+proc freeQuery*(qry: SQLQuery) =
   # finalizer for query
   when defined(odbcdebug): echo &"Freeing query with handle {qry.handle}"
   freeStatementHandle(qry.handle, qry.con.reporting)
   qry.handle = nil
   qry.params.freeParamBufs
-  dealloc(qry.dataBuf)
+  if qry.dataBuf != nil:
+    dealloc(qry.dataBuf)
+    qry.dataBuf = nil
 
 proc newQuery*(con: ODBCConnection): SQLQuery =
-  new(result, freeQuery)
+  when defined(odbcFinalizers):
+    new(result, freeQuery)
+  else:
+    new(result)
   result.con = con
   result.params = initParams()
   result.colFields = @[]
@@ -198,13 +203,47 @@ proc `statement=`*(qry: var SQLQuery, statement: string) =
   # as this would alter the parameters and get confusing
   # we DO want to clear the parameters here
   if qry.opened: qry.close  # this will also handle clearing of buffers, but not clear params
-  qry.statement = statement
-  qry.params.setupParams(qry.statement)
-  qry.odbcStatement = qry.statement.odbcParamStatement
+  qry.fStatement = statement
+  qry.params.setupParams(qry.fStatement)
+  qry.fOdbcStatement = qry.fStatement.odbcParamStatement
 
 proc statement*(qry: var SQLQuery): string =
   ## Read current statement from query.
-  qry.statement
+  qry.fStatement
+
+proc odbcStatement*(qry: var SQLQuery): string =
+  ## Read current statement as ODBC sees it. Named parameters are replaced with `?`.
+  qry.fOdbcStatement
+
+proc newQuery*(con: ODBCConnection, statement: string): SQLQuery =
+  result = con.newQuery
+  result.statement = statement
+
+import macros
+
+macro dbq*(con: ODBCConnection, queryText: string, params: varargs[tuple[name: string, value: untyped]]): untyped =
+  ## Allows disposable queries that return results then free themselves.
+  ## eg; let tabData = connnections.dbq("SELECT * from ?table", ("table", myTab))
+  result = newStmtList()
+  let
+    query = ident "query"
+  var paramUpdates = newStmtList()
+  for param in params:
+    paramUpdates.add(quote do:
+      let param = `param`
+      `query`.params[param[0]] = param[1]
+    )
+  result.add(quote do:
+    var
+      r: SQLResults
+      `query` = con.newQuery(`queryText`)
+    try:
+      `paramUpdates`
+      r = `query`.executeFetch
+    finally:
+      `query`.freeQuery
+    r
+  )
 
 template setup(qry: var SQLQuery) =
   # if not already set up, allocates memory and a new statement handle
@@ -217,7 +256,7 @@ template bindParams(qry: var SQLQuery) =
   # in place substitution for a bit less typing
   #apache drill has no concept of parameters so we resolve them before sending query
   if qry.con.serverType == ApacheDrill:
-    qry.odbcStatement.bindParams(qry.params, qry.con.reporting)
+    qry.fOdbcStatement.bindParams(qry.params, qry.con.reporting)
   else:
     qry.handle.bindParams(qry.params, qry.con.reporting)
 
@@ -303,6 +342,13 @@ proc executeFetch*(qry: var SQLQuery): SQLResults =
       result = initSQLResults()
   finally:
     qry.close
+
+proc executeFetch*(con: ODBCConnection, sql: string): SQLResults =
+  var query = con.newQuery(sql)
+  try:
+    result = query.executeFetch
+  finally:
+    query.freeQuery
 
 proc execute*(qry: var SQLQuery) =
   ## Execute query and ignore results.

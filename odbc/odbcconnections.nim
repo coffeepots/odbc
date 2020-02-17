@@ -1,4 +1,6 @@
-import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting, tables, strformat
+import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting
+when defined(odbcUseQuitProc):
+  import tables
 
 type
   ODBCServerType* = enum SQLSever,ApacheDrill
@@ -32,8 +34,10 @@ type
 var
   defaultTimeout* = 30
   defaultReportingLevel* = rlErrorsAndInfo
-  quitProcRegistered = false
-  activeConnections = initTable[SqlHDBC, ODBCConnection]()
+when defined(odbcUseQuitProc):
+  var
+    quitProcRegistered = false
+    activeConnections = initTable[SqlHDBC, ODBCConnection]()
 
 proc disconnect*(con: ODBCConnection) =
   if con.conHandle != nil:
@@ -41,8 +45,9 @@ proc disconnect*(con: ODBCConnection) =
       disconnect(con.conHandle, con.reporting)
       con.connected = false
     freeConHandle(con.conHandle, con.reporting)
-    let value = activeConnections[con.conHandle]
-    activeConnections.del(value.conHandle)
+    when defined(odbcUseQuitProc):
+      let value = activeConnections[con.conHandle]
+      activeConnections.del(value.conHandle)
     when defined(odbcdebug): echo "Disconnected handle ", repr(con.conHandle)
     con.conHandle = nil
 
@@ -53,22 +58,24 @@ proc freeConnection*(con: ODBCConnection) =
   if con.envHandle != nil:
     freeEnvHandle(con.envHandle, con.reporting)
 
-proc toValuesSeq[T, V](table: Table[T, V]): seq[V] =
-  var i: int
-  result.setLen(table.len)
-  for value in table.values:
-    result[i] = value
-    i = i + 1
+when defined(odbcUseQuitProc):
 
-proc finaliseConnections {.noconv.} =
-  # free up any connections
-  when defined(odbcdebug): echo "Finalising connections..."
-  # Make a copy of the connections in order to iterate whilst deleting.
-  var hosts = activeConnections.toValuesSeq
-  for host in hosts:
-    when defined(odbcdebug): echo &"Freeing connection to: {host.repr}"
-    host.freeConnection
-  when defined(odbcdebug): echo "Finalising connections done"
+  proc toValuesSeq[T, V](table: Table[T, V]): seq[V] =
+    var i: int
+    result.setLen(table.len)
+    for value in table.values:
+      result[i] = value
+      i = i + 1
+
+  proc finaliseConnections {.noconv.} =
+    # free up any connections
+    when defined(odbcdebug): echo "Finalising connections..."
+    # Make a copy of the connections in order to iterate whilst deleting.
+    var hosts = activeConnections.toValuesSeq
+    for host in hosts:
+      when defined(odbcdebug): echo &"Freeing connection to: {host.repr}"
+      host.freeConnection
+    when defined(odbcdebug): echo "Finalising connections done"
 
 proc newODBCConnection*(driver: string = "", host: string = "", database: string = "",server:ODBCServerType = SQLSever): ODBCConnection =
   new(result, freeConnection)
@@ -89,9 +96,10 @@ proc newODBCConnection*(driver: string = "", host: string = "", database: string
   result.reporting = newODBCReportState()
   result.reporting.level = defaultReportingLevel
   result.reporting.destinations = {rdStore}
-  if not quitProcRegistered:
-    addQuitProc(finaliseConnections)
-    quitProcRegistered = true
+  when defined(odbcUseQuitProc):
+    if not quitProcRegistered:
+      addQuitProc(finaliseConnections)
+      quitProcRegistered = true
 
 proc getConnectionString*(con: var ODBCConnection): string =
   var params: seq[string] = @[]
@@ -168,11 +176,9 @@ proc `transactionMode=`*(con: var ODBCConnection, tmMode: ODBCTransactionMode) =
     case tmMode:
     of tmAuto:
       if con.setConnectionAttr(SQL_ATTR_AUTOCOMMIT, SQL_AUTOCOMMIT_ON):
-        # only set object variable on success
         con.transMode = tmMode
     of tmManual:
       if con.setConnectionAttr(SQL_ATTR_AUTOCOMMIT, SQL_AUTOCOMMIT_OFF):
-        # only set object variable on success
         con.transMode = tmMode
   else:
     con.transMode = tmMode
@@ -212,9 +218,10 @@ proc connect*(con: var ODBCConnection): bool =
   con.connected = ret.sqlSucceeded
   result = con.connected
 
-  if con.connected:
-    activeConnections.add(con.conHandle, con)
-    when defined(odbcdebug): echo "Registered connection handle ", repr(con.conHandle)
+  when defined(odbcUseQuitProc):
+    if con.connected:
+      activeConnections.add(con.conHandle, con)
+      when defined(odbcdebug): echo "Registered connection handle ", repr(con.conHandle)
   # Set timeout and handle transaction settings
   con.timeout = con.conTimeout
   con.transactionMode = con.transMode

@@ -1,5 +1,3 @@
-import odbcsql
-
 type
   ODBCReportLevel* = enum rlNone, rlErrors, rlErrorsAndInfo
   ODBCReportDestination* = enum rdStore, rdEcho, rdFile, rdCallBack

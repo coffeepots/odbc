@@ -3,7 +3,7 @@ import odbcfields, odbctypes, json, unicode, tables, strformat
 proc toJson*(data: SQLData): JsonNode =
   case data.kind:
     of dtNull:
-      result.kind = JNull
+      result = newJNull()
     of dtString:
       result = % $(data.strVal)
     of dtInt:

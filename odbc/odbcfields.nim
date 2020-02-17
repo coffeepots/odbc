@@ -33,7 +33,15 @@ proc `[]`*(results: SQLResults, index: int): SQLRow =
 proc add*(results: var SQLResults, row: SQLRow) =
   results.rows.add(row)
 
+proc fieldCount*(results: SQLResults): int = results.colFields.len
+
 proc fields*(results: SQLResults, index: int): SQLField = results.colFields[index]
+
+iterator fields*(results: SQLResults): SQLField =
+  var idx: int
+  while idx < results.colFields.len:
+    yield results.colFields[idx]
+    idx.inc
 
 proc fields*(results: SQLResults, fieldName: string): SQLField =
   let idx = results.fieldnameIndex.getOrDefault(fieldName.toLowerAscii, -1)
