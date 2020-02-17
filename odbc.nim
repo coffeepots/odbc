@@ -32,10 +32,10 @@ type
     handle: SqlHStmt
     # statement is handled by a property getter/setter as setting the statement
     # triggers a search for parameters
-    statement: string
+    fStatement: string
     # This is the statement with "?name" replaced with "?" (ODBC doesn't allow named parameters)
     # odbcStatement is set up when the statement is set
-    odbcStatement: string
+    fOdbcStatement: string
     # metadata for result columns
     colFields: seq[SQLField]
     # dataBuf is the default buffer for reading data from ODBC for processing
@@ -198,13 +198,18 @@ proc `statement=`*(qry: var SQLQuery, statement: string) =
   # as this would alter the parameters and get confusing
   # we DO want to clear the parameters here
   if qry.opened: qry.close  # this will also handle clearing of buffers, but not clear params
-  qry.statement = statement
-  qry.params.setupParams(qry.statement)
-  qry.odbcStatement = qry.statement.odbcParamStatement
+  qry.fStatement = statement
+  qry.params.setupParams(qry.fStatement)
+  qry.fOdbcStatement = qry.fStatement.odbcParamStatement
 
 proc statement*(qry: var SQLQuery): string =
   ## Read current statement from query.
-  qry.statement
+  qry.fStatement
+
+proc odbcStatement*(qry: var SQLQuery): string =
+  ## Read current statement as ODBC sees it. Named parameters are replaced with `?`.
+  qry.fOdbcStatement
+
 
 template setup(qry: var SQLQuery) =
   # if not already set up, allocates memory and a new statement handle
