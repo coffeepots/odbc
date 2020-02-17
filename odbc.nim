@@ -53,16 +53,21 @@ type
   # Main query object
   SQLQuery* = ref SQLQueryObj
 
-proc freeQuery(qry: SQLQuery) =
+proc freeQuery*(qry: SQLQuery) =
   # finalizer for query
   when defined(odbcdebug): echo &"Freeing query with handle {qry.handle}"
   freeStatementHandle(qry.handle, qry.con.reporting)
   qry.handle = nil
   qry.params.freeParamBufs
-  dealloc(qry.dataBuf)
+  if qry.dataBuf != nil:
+    dealloc(qry.dataBuf)
+    qry.dataBuf = nil
 
 proc newQuery*(con: ODBCConnection): SQLQuery =
-  new(result, freeQuery)
+  when defined(odbcFinalizers):
+    new(result, freeQuery)
+  else:
+    new(result)
   result.con = con
   result.params = initParams()
   result.colFields = @[]
