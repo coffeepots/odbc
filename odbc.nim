@@ -227,7 +227,7 @@ template bindParams(qry: var SQLQuery) =
   # in place substitution for a bit less typing
   #apache drill has no concept of parameters so we resolve them before sending query
   if qry.con.serverType == ApacheDrill:
-    qry.odbcStatement.bindParams(qry.params, qry.con.reporting)
+    qry.fOdbcStatement.bindParams(qry.params, qry.con.reporting)
   else:
     qry.handle.bindParams(qry.params, qry.con.reporting)
 
