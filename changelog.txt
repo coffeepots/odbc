@@ -1,3 +1,7 @@
+0.2.1
+  * Demoted addQuitProc behaviour and the use of finalizers to require a compile-time switch.
+  * Added dbq and a new executeFetch for executing sql without Query objects. 
+
 0.2.0
   * Added `asBinary` support for times. All field types now allow conversion to `seq[byte]`.
   * Added `tryData` for `SQLResults`, allowing speculatively fetching values without raising an error if the field doesn't exist.

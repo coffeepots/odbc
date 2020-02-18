@@ -128,7 +128,26 @@ This is a template that allows you to process each row, and is equivalent to ope
 
 This is useful for command type queries where you don't expect a result set. Calling this procedure opens the query and then closes it, ignoring any results.
 
-### Result sets
+## Executing SQL without Queries
+
+Sometimes you just want to fire off some SQL and get the results without managing query objects. There are two main ways of doing this, depending on whether you need to use parameters or not.
+
+### Without parameters
+
+ExecuteFetch can be run with just a connection and the SQL text.
+```nim
+let fetchedData = connection.executeFetch("SELECT 1")
+```
+
+### With parameters
+
+The `dbq` macro takes the connection, SQL text, and varargs of param name and value tuples.
+
+```nim
+let data = connection.dbq("SELECT ?value", ("value", 1))
+```
+
+## Result sets
 
 A result set is defined as the type SQLResults, which contains a sequence of SQLRow and this in turn is a sequence of field data defined as SQLData.
 SQLResults also contains a table of fields, which stores the fieldname, size and datatype of the field.
@@ -250,7 +269,7 @@ Note that the statement is set only once, and in each example the opening/closin
       echo row.len, " fields in this row"               # outputs "3 fields in this row"
 
 
-### Parameters
+## Parameters
 
 Parameters can be any of the datatypes that SQLValue can hold, and are referenced in the SQL (by default) with the '?' prefix. You can use any string as a prefix, however, by setting the paramPrefix variable - note that this is a global variable!
 Parameters are set by value by using their name as follows:
