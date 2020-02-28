@@ -229,14 +229,15 @@ macro dbq*(con: ODBCConnection, queryText: string, params: varargs[tuple[name: s
     query = ident "query"
   var paramUpdates = newStmtList()
   for param in params:
+    let value = param[1]
     paramUpdates.add(quote do:
       let param = `param`
-      `query`.params[param[0]] = param[1]
+      `query`.params[param[0]] = `value`
     )
   result.add(quote do:
     var
       r: SQLResults
-      `query` = con.newQuery(`queryText`)
+      `query` = `con`.newQuery(`queryText`)
     try:
       `paramUpdates`
       r = `query`.executeFetch

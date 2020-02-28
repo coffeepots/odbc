@@ -333,6 +333,12 @@ for conDetails in connections.mitems:
         check qry.fields(2).fieldname == "C"
         check row[2] == 0.8
 
+    test "Dbq:":
+      let res = con.dbq("SELECT ?a, ?b, ?c", ("a", 1), ("b", 2), ("c", 3))
+      check res[0][0] == 1
+      check res[0][1] == 2
+      check res[0][2] == 3
+
     test "FieldByName":
       con.timeout = 10
       qry = newQuery(con)
