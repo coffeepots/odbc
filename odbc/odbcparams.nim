@@ -258,8 +258,6 @@ proc allocateBuffers(params: var SQLParams) =
     params.paramBuf.setLen(params.items.len)
     params.paramIndBuf.setLen(params.items.len) # no need to free anything here
   else:
-    # l = 20, ol = 10
-    # 10 .. 19
     when defined(odbcdebug): echo "Increasing buffer size:"
     for idx in params.paramBuf.len .. params.items.len - 1:
       var indBuf: ParamIndBuf = 0 # Just an int no need to free
