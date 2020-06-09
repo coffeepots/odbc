@@ -1,3 +1,8 @@
+0.2.2
+  * Added native support for GUID / uniqueidentifier fields.
+  * Allow multiple dbq statements in a scope.
+  * More sensible defaults for error reporting.
+
 0.2.1
   * Demoted addQuitProc behaviour and the use of finalizers to require a compile-time switch.
   * Added dbq and a new executeFetch for executing sql without Query objects. 
