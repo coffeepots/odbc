@@ -1,6 +1,6 @@
 type
-  ODBCReportLevel* = enum rlNone, rlErrors, rlErrorsAndInfo
-  ODBCReportDestination* = enum rdStore, rdEcho, rdFile, rdCallBack
+  ODBCReportLevel* = enum rlErrorsAndInfo, rlErrors, rlNone
+  ODBCReportDestination* = enum rdEcho, rdStore, rdFile, rdCallBack, rdIgnore
   ODBCReportState* = ref object
     level*: ODBCReportLevel
     destinations*: set[ODBCReportDestination]
@@ -41,4 +41,5 @@ proc odbcLog*(rptState: var ODBCReportState, logStr: string) =
           rptState.messages.add(logStr)
     of rdCallBack:
       if rptState.callBack != nil: rptState.callBack(logStr)
-
+    of rdIgnore:
+      discard
