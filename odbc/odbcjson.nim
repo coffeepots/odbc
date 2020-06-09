@@ -20,6 +20,8 @@ proc toJson*(data: SQLData): JsonNode =
     of dtBinary:
       let s = $data.binVal # :(
       result = %s
+    of dtGuid:
+      result = %($data.guidVal)
 
 proc toJson*(value: SQLValue): JsonNode =
   ## Convert an SQLValue to JSON using the json unit.

@@ -1,4 +1,5 @@
-import odbcsql, odbctypes, tables, odbcerrors, times, unicode, odbcreporting, strformat, strutils
+import odbcsql, odbctypes, tables, odbcerrors, times, unicode, odbcreporting, strformat
+from strutils import Letters, Digits, find
 include odbcfields
 from math import round
 
@@ -207,6 +208,16 @@ proc readFromBuf(dataItem: var SQLData, buffer: ParamBuffer, indicator: int) =
     else:
       # Default behaviour is to populate milliseconds, microseconds and nanoseconds.
       dataItem.timeVal = distributeNanoseconds(timestamp[])
+  of dtGuid:
+    let byteBuffer = cast[ptr UncheckedArray[byte]](buffer)
+    template setAsSource(source: untyped, bytePos: int) =
+      let asSourceType = cast[ptr source.type](byteBuffer[bytePos].addr)
+      source = asSourceType[]
+    dataItem.guidVal.D1.setAsSource 0
+    dataItem.guidVal.D2.setAsSource 4
+    dataItem.guidVal.D3.setAsSource 6
+    dataItem.guidVal.D4.addr.copyMem(byteBuffer[8].addr, 8)
+
   when defined(odbcdebug):
     echo "Read buffer (first 255 bytes): ", repr(cast[ptr array[0..255, byte]](buffer))
 
@@ -233,6 +244,8 @@ proc writeToBuf(dataItem: SQLData, buffer: ParamBuffer) =
     timestamp.Day = dataItem.timeVal.days.SqlUSmallInt + 1    # day is 1 indexed in SQL
     timestamp.Month = dataItem.timeVal.months.SqlUSmallInt
     timestamp.Year = dataItem.timeVal.years.SqlUSmallInt
+  of dtGuid:
+    copyMem(buffer, dataItem.guidVal.unsafeAddr, 16)
   when defined(odbcdebug):
     echo "Write buffer (first 255 bytes): ", repr(cast[ptr array[0..255, byte]](buffer))
 

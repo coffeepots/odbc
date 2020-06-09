@@ -236,7 +236,16 @@ for conDetails in connections.mitems:
       for i in 0..<100:
         check bin[i] == i.byte
       check bin == res.asBinary
-      
+    
+    test "GUIDs":
+      for tests in 0 .. 10:
+        let
+          fetch = con.dbq("""
+          DECLARE @guid UniqueIdentifier = NEWID();
+          SELECT CONVERT(char(36), @guid), @guid 
+          """)
+        check $fetch[0][0].strVal == $fetch[0][1].guidVal
+
   suite "Unicode":
     test "Read/write unicode":
       qry.statement = """

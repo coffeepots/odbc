@@ -10,7 +10,7 @@ const
 
 type
   FieldIdxs* = Table[string, int]  # this allows linking fieldname with index into field columns
-  SQLDataType* = enum dtNull, dtString, dtInt, dtInt64, dtBool, dtFloat, dtTime, dtBinary
+  SQLDataType* = enum dtNull, dtString, dtInt, dtInt64, dtBool, dtFloat, dtTime, dtBinary, dtGuid
 
   SQLColType* = enum ctUnknown, ctFixedStr, ctString, ctUnicodeFixedStr, ctUnicodeStr, ctDecimal,
     ctBit, ctTinyInt, ctSmallInt, ctInt, ctBigInt, ctFloat, ctDouble, ctFixedBinary, ctBinary, ctDateTime,
@@ -18,6 +18,12 @@ type
     ctMinuteInterval, ctSecondInterval, ctGUID
 
   SQLBinaryData* = seq[byte]
+
+  GuidData* {.final, pure.} = object
+    D1*: int32
+    D2*: int16
+    D3*: int16
+    D4*: array[0..7, int8]
 
   SQLData* = object
     ## Variant type that represents a field's value.
@@ -30,6 +36,7 @@ type
     of dtFloat: floatVal*: float  # NOTE: C's float is float32, Nim's is equiv to C's double
     of dtTime: timeVal*: TimeInterval
     of dtBinary: binVal*: SQLBinaryData
+    of dtGuid: guidVal*: GuidData
 
   SQLRow* = seq[SQLData]
 
@@ -101,22 +108,23 @@ proc toDataType*(dataType: SQLColType): SQLDataType =
   of ctFloat, ctDouble: result = dtFloat
   of ctDate, ctTime, ctTimeStamp: result = dtTime
   of ctBinary, ctFixedBinary: result = dtBinary
+  of ctGUID: result = dtGuid
   else:
     result = dtNull
-    # TODO: dtFixedBinary, dtBigInt, dtYearInterval, dtMonthInterval, dtDayInterval, dtSecondInterval, dtGUID
+    # TODO: dtFixedBinary, dtBigInt, dtYearInterval, dtMonthInterval, dtDayInterval, dtSecondInterval
     raise newODBCUnsupportedTypeException($dataType)
 
 proc toCType*(sqlType: SQLDataType): TSqlSmallInt =
   case sqlType
-  of dtNull: result = SQL_TYPE_NULL
-  of dtString: result = SQL_WCHAR
-  #of dtString: result = SQL_UNICODE #SQL_C_CHAR
-  of dtInt: result = SQL_C_SLONG
-  of dtInt64: result = SQL_C_SBIGINT
-  of dtBool: result = SQL_C_BIT
-  of dtFloat: result = SQL_C_DOUBLE
-  of dtTime: result = SQL_C_TYPE_TIMESTAMP
-  of dtBinary: result = SQL_C_BINARY
+  of dtNull: SQL_TYPE_NULL
+  of dtString: SQL_WCHAR
+  of dtInt: SQL_C_SLONG
+  of dtInt64: SQL_C_SBIGINT
+  of dtBool: SQL_C_BIT
+  of dtFloat: SQL_C_DOUBLE
+  of dtTime: SQL_C_TYPE_TIMESTAMP
+  of dtBinary: SQL_C_BINARY
+  of dtGUID: SQL_C_GUID 
 
 proc toCType*(data: SQLData): TSqlSmallInt =
   result = data.kind.toCType
@@ -135,6 +143,7 @@ proc toCType*(t: typeDesc): TSqlSmallInt =
   elif t is float: result = SQL_C_DOUBLE
   elif t is Time or t is TimeInterval: result = SQL_C_TYPE_TIMESTAMP
   elif t is SQLBinaryData: result = SQL_C_BINARY
+  elif t is GuidData: result = SQL_C_GUID
   else:
     result = SQL_TYPE_NULL
     raise newODBCUnsupportedTypeException($t.name)
@@ -153,14 +162,15 @@ proc toSqlType*(t: typeDesc): TSqlSmallInt =
 
 proc toSqlType*(dataType: SQLDataType): TSqlSmallInt =
   case dataType
-  of dtNull: result = SQL_UNKNOWN_TYPE
-  of dtString: result = SQL_WCHAR
-  of dtInt: result = SQL_INTEGER
-  of dtInt64: result = SQL_BIGINT
-  of dtBool: result = SQL_BIT
-  of dtFloat: result = SQL_FLOAT
-  of dtTime: result = SQL_C_TIMESTAMP
-  of dtBinary: result = SQL_BINARY
+  of dtNull: SQL_UNKNOWN_TYPE
+  of dtString: SQL_WCHAR
+  of dtInt: SQL_INTEGER
+  of dtInt64: SQL_BIGINT
+  of dtBool: SQL_BIT
+  of dtFloat: SQL_FLOAT
+  of dtTime: SQL_C_TIMESTAMP
+  of dtBinary: SQL_BINARY
+  of dtGuid: SQL_GUID
 
 proc toSqlType*(data: SQLData): TSqlSmallInt =
   result = data.kind.toSqlType
@@ -185,8 +195,22 @@ proc initSQLData*[T](inputData: T): SQLData =
     SQLData(kind: dtTime, timeVal: inputData.toTimeInterval)
   elif T is SQLBinaryData:
     SQLData(kind: dtBinary, binVal: inputData)
+  elif T is GuidData:
+    SQLData(kind: dtGuid, guidVal: inputData)
   else:
     raise newODBCUnsupportedTypeException($T.name)
+
+proc `$`*(guid: GuidData): string =
+  template clock(value: untyped): string = value.toHex
+  proc arrayHex(value: openarray[int8]): string {.inline.} =
+    for b in value:
+      result &= b.toHex
+  result = 
+    guid.D1.clock & "-" &
+    guid.D2.clock & "-" &
+    guid.D3.clock & "-" &
+    guid.D4[0..1].arrayHex & "-" &
+    guid.D4[2..7].arrayHex
 
 proc `$`*(sqlData: SQLData): string =
   ## Return a string representation of `sqlData`.
@@ -202,7 +226,25 @@ proc `$`*(sqlData: SQLData): string =
     result = ""
     for byt in sqlData.binVal:
       result &= $byt & '.'
-  result &= " (" & $sqlData.kind & ")"
+  of dtGuid:
+    result = $sqlData.guidVal
+  result &= "\n(" & $sqlData.kind & ")"
+
+proc setTo[T: int8|uint8, U: SomeInteger](list: var openarray[T], startPos: int, value: U) =
+  # Set a consecutive portion of a list to the bytes in value.
+  let maxIndex = min(startPos + U.sizeOf, list.len) - 1
+  for i in startPos..maxIndex:
+    list[i] = cast[T]((value shr ((maxIndex - i) * 8) and 0xFf))
+
+proc guid*(guidStr: string): GuidData =
+  ## Create a GUID from a string of the format `xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx`.
+  doAssert guidStr.len == 36, "Expecting format: xxxxxxxx-xxxx-Mxxx-Nxxx-xxxxxxxxxxxx"
+
+  result.D1 = fromHex[int32](guidStr[0..7])
+  result.D2 = fromHex[int16](guidStr[9..12])
+  result.D3 = fromHex[int16](guidStr[14..17])
+  result.D4.setTo 0, fromHex[int16](guidStr[19..22])
+  result.D4.setTo 2, fromHex[int](guidStr[24..35])
 
 proc asInt*(sqlData: SQLData): int =
   ## Return `sqlData` as an int where possible.
@@ -212,7 +254,7 @@ proc asInt*(sqlData: SQLData): int =
     try:
       result = sqlData.strVal.parseInt
     except:
-      raise newODBCException("error converting to int from string value \"" & sqlData.strVal & "\"")
+      raise newODBCException("Error converting to int from string value \"" & sqlData.strVal & "\"")
   of dtInt: result = sqlData.intVal
   of dtInt64:
     if sqlData.int64Val > int.high:
@@ -221,8 +263,9 @@ proc asInt*(sqlData: SQLData): int =
       result = sqlData.int64Val.int
   of dtBool: result = if sqlData.boolVal: 1 else: 0
   of dtFloat: result = sqlData.floatVal.int
-  of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to int")
-  of dtBinary: raise newODBCException("cannot transform binary to int")
+  of dtTime: raise newODBCException("Cannot transform " & sqlData.timeVal.type.name & " to int")
+  of dtBinary: raise newODBCException("Cannot transform binary to int")
+  of dtGuid: raise newODBCException("Cannot transform GUID to int")
 
 proc asInt64*(sqlData: SQLData): int64 =
   ## Return `sqlData` as an int64 where possible.
@@ -233,15 +276,16 @@ proc asInt64*(sqlData: SQLData): int64 =
       # TODO: This will only work on 64 bit systems AFAICT :/
       result = sqlData.strVal.parseBiggestInt
     except:
-      raise newODBCException("error converting to int64 from string value \"" & sqlData.strVal & "\"")
+      raise newODBCException("Error converting to int64 from string value \"" & sqlData.strVal & "\"")
   of dtInt:
     result = sqlData.intVal.int64
   of dtInt64:
     result = sqlData.int64Val
   of dtBool: result = if sqlData.boolVal: 1 else: 0
   of dtFloat: result = sqlData.floatVal.int64
-  of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to int64")
-  of dtBinary: raise newODBCException("cannot transform binary to int64")
+  of dtTime: raise newODBCException("Cannot transform " & sqlData.timeVal.type.name & " to int64")
+  of dtBinary: raise newODBCException("Cannot transform binary to int64")
+  of dtGuid: raise newODBCException("Cannot transform GUID to int64")
 
 proc asFloat*(sqlData: SQLData): float =
   ## Return `sqlData` as a float where possible.
@@ -251,13 +295,14 @@ proc asFloat*(sqlData: SQLData): float =
     try:
       result = sqlData.strVal.parseFloat
     except:
-      raise newODBCException("error converting to float from string value \"" & sqlData.strVal & "\"")
+      raise newODBCException("Error converting to float from string value \"" & sqlData.strVal & "\"")
   of dtInt: result = sqlData.intVal.float
   of dtInt64: result = sqlData.int64Val.float
   of dtBool: result = if sqlData.boolVal: 1.0 else: 0.0
   of dtFloat: result = sqlData.floatVal
-  of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to int")
-  of dtBinary: raise newODBCException("cannot transform binary to int")
+  of dtTime: raise newODBCException("Cannot transform " & sqlData.timeVal.type.name & " to float")
+  of dtBinary: raise newODBCException("Cannot transform binary to float")
+  of dtGuid: raise newODBCException("Cannot transform GUID to float")
 
 proc asBool*(sqlData: SQLData): bool =
   ## Return `sqlData` as a boolean where possible.
@@ -267,25 +312,27 @@ proc asBool*(sqlData: SQLData): bool =
     try:
       result = sqlData.strVal.parseBool
     except:
-      raise newODBCException("error converting to bool from string value \"" & sqlData.strVal & "\"")
+      raise newODBCException("Error converting to bool from string value \"" & sqlData.strVal & "\"")
   of dtInt: result = sqlData.intVal != 0
   of dtInt64: result = sqlData.int64Val != 0
   of dtBool: result = sqlData.boolVal
   of dtFloat: result = sqlData.floatVal != 0.0
-  of dtTime: raise newODBCException("cannot transform " & sqlData.timeVal.type.name & " to bool")
-  of dtBinary: raise newODBCException("cannot transform binary to int")
+  of dtTime: raise newODBCException("Cannot transform " & sqlData.timeVal.type.name & " to bool")
+  of dtBinary: raise newODBCException("Cannot transform binary to bool")
+  of dtGuid: raise newODBCException("Cannot transform GUID to bool")
 
 proc asString*(sqlData: SQLData): string =
   ## Return `sqlData` as a string.
   case sqlData.kind
-  of dtNull: result = nullValue
-  of dtString: result = sqlData.strVal
-  of dtInt: result = $sqlData.intVal
-  of dtInt64: result = $sqlData.int64Val
-  of dtBool: result = $sqlData.boolVal
-  of dtFloat: result = $sqlData.floatVal
-  of dtTime: result = $sqlData.timeVal
-  of dtBinary: result = $sqlData.binVal
+  of dtNull: nullValue
+  of dtString: sqlData.strVal
+  of dtInt: $sqlData.intVal
+  of dtInt64: $sqlData.int64Val
+  of dtBool: $sqlData.boolVal
+  of dtFloat: $sqlData.floatVal
+  of dtTime: $sqlData.timeVal
+  of dtBinary: $sqlData.binVal
+  of dtGuid: $sqlData.guidVal
 
 proc asBinary*(sqlData: SQLData): SQLBinaryData =
   ## Return `sqlData` as a seq[byte] where possible.
@@ -326,11 +373,19 @@ proc asBinary*(sqlData: SQLData): SQLBinaryData =
   of dtBinary:
     result.setLen sqlData.binVal.len
     for idx, b in sqlData.binVal: result[idx] = b
-
+  of dtGuid:
+    template guid: untyped = sqlData.guidVal
+    result.setLen 16
+    result.setTo 0, guid.D1
+    result.setTo 4, guid.D2
+    result.setTo 6, guid.D3
+    for i, b in guid.D4:
+      result[i] = uint8(b)
+    
 proc asTimeInterval*(sqlData: SQLData): TimeInterval =
   ## Return `sqlData` as a time interval where possible.
   if sqlData.kind == dtTime: result = sqlData.timeVal
-  else: raise newODBCException("cannot transform " & $sqlData.kind & " to time")
+  else: raise newODBCException("Cannot transform " & $sqlData.kind & " to time")
 
 ## Check if a value is `null`.
 proc isNull*(sqlData: SQLData): bool = sqlData.kind == dtNull
@@ -349,5 +404,3 @@ converter toInt64*(sqlData: SQLData): int64 = sqlData.asInt64
 converter toTimeInterval*(sqlData: SQLData): TimeInterval = sqlData.asTimeInterval
 
 proc `$`*(handle: SqlHStmt): string = handle.repr
-
-
