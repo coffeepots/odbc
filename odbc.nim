@@ -20,6 +20,7 @@ import
 export odbctypes, odbcreporting, odbcerrors
 
 # this import includes the handles module and also imports odbcerrors
+# TODO: Convert includes to imports.
 include
   odbc/odbcconnections,
   odbc/odbchandles,
@@ -223,28 +224,28 @@ import macros
 
 macro dbq*(con: ODBCConnection, queryText: string, params: varargs[tuple[name: string, value: untyped]]): untyped =
   ## Allows disposable queries that return results then free themselves.
-  ## eg; let tabData = connnections.dbq("SELECT * from ?table", ("table", myTab))
-  result = newStmtList()
-  let
-    query = ident "query"
+  ## eg;
+  ## `let tabData = connnections.dbq("SELECT * FROM table WHERE field = ?value", ("field", someValue))`
+  let query = genSym(nskVar, "query")
   var paramUpdates = newStmtList()
   for param in params:
-    let value = param[1]
+    let
+      key = param[0]
+      value = param[1]
     paramUpdates.add(quote do:
-      let param = `param`
-      `query`.params[param[0]] = `value`
-    )
-  result.add(quote do:
-    var
-      r: SQLResults
-      `query` = `con`.newQuery(`queryText`)
-    try:
-      `paramUpdates`
-      r = `query`.executeFetch
-    finally:
-      `query`.freeQuery
-    r
-  )
+      `query`.params[`key`] = `value`)
+  
+  quote do:
+    block:
+      var
+        r: SQLResults
+        `query` = `con`.newQuery(`queryText`)
+      try:
+        `paramUpdates`
+        r = `query`.executeFetch
+      finally:
+        `query`.freeQuery
+      r
 
 template setup(qry: var SQLQuery) =
   # if not already set up, allocates memory and a new statement handle
