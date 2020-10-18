@@ -1,4 +1,4 @@
-import odbcsql, odbcerrors, odbcconnections, odbcreporting, odbchandles, times
+import odbcsql, odbcerrors, odbcconnections, odbcreporting, odbchandles
 
 type
   SQLDriverAttribute* = tuple[key, value: string]
@@ -28,7 +28,6 @@ proc listDrivers*(con: ODBCConnection = nil): seq[SQLDriverInfo] =
     attr_ret: TSqlSmallInt
     direction: SqlUSmallInt
     ret: TSqlSmallInt
-    ODBC_Version = SQL_OV_ODBC3
     newStr: string = ""
     i: int
     rpt: ODBCReportState
@@ -40,8 +39,9 @@ proc listDrivers*(con: ODBCConnection = nil): seq[SQLDriverInfo] =
   else:
     rpt = newODBCReportState()
 
-  rptOnErr(rpt, SQLAllocHandle(SQL_HANDLE_ENV.TSqlSmallInt, SQL_NULL_HANDLE, env), "AllocHandle")
-  rptOnErr(rpt, SQLSetEnvAttr(env, SQL_ATTR_ODBC_VERSION, ODBC_Version, 0), "SetEnv", env)
+  env = newEnvHandle(rpt)
+
+  setODBCType(env, con.reporting)
 
   direction = SQL_FETCH_FIRST
 

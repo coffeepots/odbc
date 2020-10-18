@@ -60,7 +60,7 @@ proc loadIni*(inifile: var IniFile, filename: string = ""): bool =
       # this is a section
       var newTable = newTable[string, string]()
       curSection = substr(sLine.toLower, 1, sLine.len - 2)
-      inifile.sections.add(curSection, newTable)
+      inifile.sections[curSection] = newTable
     elif sLine.startsWith(";") or sLine.startsWith("#"):
       # comment
       discard
@@ -76,7 +76,7 @@ proc loadIni*(inifile: var IniFile, filename: string = ""): bool =
         if not inifile.sections.hasKey(curSection):
           # handle items under no/blank section
           sectionItems = newTable[string, string]()
-          inifile.sections.add(curSection, sectionItems)
+          inifile.sections[curSection] = sectionItems
         else:
           # retrieve from existing section table
           sectionItems = inifile.sections[curSection]
@@ -85,7 +85,7 @@ proc loadIni*(inifile: var IniFile, filename: string = ""): bool =
           # note: quotes are stripped
           k = sLine.subStr(0, sepPoint - 1).toLower.replace("\"")
           v = sLine.subStr(sepPoint + 1).replace("\"")
-        sectionItems.add(k, v)
+        sectionItems[k] = v
         result = true
 
 proc `$`*(ini: IniFile): string =

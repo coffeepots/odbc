@@ -159,7 +159,7 @@ SQLData elements are a variant object, and can be of several different types.
 * int64Val: Int64
 * boolVal: Bool
 * floatVal: Float
-* timeVal: Time. Stored as `TimeInterval`.
+* timeVal: DateTime. Stored as `TimeInterval`.
 * binVal: Binary. Stored as a `seq[byte]`.
 
 Data from a result set can be accessed directly using indexes.

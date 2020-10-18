@@ -39,9 +39,8 @@ proc getEnvVal*(envHandle: SqlHEnv, rptState: var ODBCReportState): TSqlInteger 
   rptOnErr(rptState, SQLGetEnvAttr(envHandle, SQL_ATTR_ODBC_VERSION.TSqlInteger, addr result, 0, addr strLen), "GetEnv", envHandle)
 
 proc setODBCType*(envHandle: SqlHEnv, rptState: var ODBCReportState) {.inline.} =
-  var
-    odbcVersion: TSqlInteger = SQL_OV_ODBC3
-  rptOnErr(rptState, SQLSetEnvAttr(envHandle, SQL_ATTR_ODBC_VERSION.TSqlInteger, odbcVersion, 0), "SetEnv ODBC type", envHandle)
+  var odbcVersion: TSqlInteger = SQL_OV_ODBC3
+  rptOnErr(rptState, SQLSetEnvAttr(envHandle, SQL_ATTR_ODBC_VERSION.TSqlInteger, cast[SQLPointer](odbcVersion), 0), "SetEnv ODBC type", envHandle)
 
 proc sqlSucceeded*(resint: TSqlSmallInt): bool {.inline.} =
   result = resint == SQL_SUCCESS or resint == SQL_SUCCESS_WITH_INFO

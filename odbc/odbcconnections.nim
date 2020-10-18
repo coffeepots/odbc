@@ -1,14 +1,14 @@
 import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting
 when defined(odbcUseQuitProc):
-  import tables
+  import tables, strformat
 
 type
   ODBCServerType* = enum SQLSever,ApacheDrill
   ODBCTransactionMode = enum tmAuto, tmManual
 
   ODBCConnection* = ref object
-    envHandle: SqlHEnv
-    conHandle: SqlHDBC
+    envHandle*: SqlHEnv
+    conHandle*: SqlHDBC
     conTimeout: int
     #
     driver*: string
@@ -20,7 +20,7 @@ type
     provider*: string
     integratedSecurity*: bool
     connected: bool
-    serverType:ODBCServerType
+    serverType*:ODBCServerType
     transMode: ODBCTransactionMode
     multipleActiveResultSets*: bool
     autoTranslate*: bool
@@ -156,7 +156,7 @@ proc setConnectionAttr*(con: var ODBCConnection, connectParam, value: int): bool
 
 proc setConnectionAttr*(con: var ODBCConnection, connectParam: int, value: string): bool =
   var
-    ret = SQLSetConnectAttr(con.conHandle, connectParam.TSqlInteger, value.cstring, value.len)
+    ret = SQLSetConnectAttr(con.conHandle, connectParam.TSqlInteger, value.cstring, value.len.TSqlInteger)
   if not ret.sqlSucceeded:
     result = false
     rptOnErr(con.reporting, ret, "SQLSetConnectAttr " & $connectParam & " = " & $value, con.conHandle, SQL_HANDLE_DBC.TSqlSmallInt)
@@ -220,7 +220,7 @@ proc connect*(con: var ODBCConnection): bool =
 
   when defined(odbcUseQuitProc):
     if con.connected:
-      activeConnections.add(con.conHandle, con)
+      activeConnections[con.conHandle] = con
       when defined(odbcdebug): echo "Registered connection handle ", repr(con.conHandle)
   # Set timeout and handle transaction settings
   con.timeout = con.conTimeout

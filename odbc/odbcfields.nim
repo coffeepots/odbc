@@ -8,7 +8,7 @@ type
     # add some metadata where appropriate
     dataType*: SQLDataType
     colType*: SQLColType
-    sqlType: TSqlSmallInt
+    sqlType*: TSqlSmallInt
     cType*: TSqlSmallInt
     size*: int
     digits*: int
@@ -22,8 +22,8 @@ type
     data*: SQLData
 
   SQLResults* = object
-    fieldnameIndex: FieldIdxs
-    colFields: seq[SQLField]
+    fieldnameIndex*: FieldIdxs
+    colFields*: seq[SQLField]
     rows*: seq[SQLRow]
     curRow*: int
 
@@ -124,7 +124,7 @@ proc setType*[T](field: var SQLField, data: T) =
   field.cType = toCType(T)
   when T is string or T is SQLBinaryData:
     field.size = data.len
-  elif T is Time|TimeInterval:
+  elif T is DateTime or T is TimeInterval:
     # See: https://docs.microsoft.com/en-us/sql/odbc/reference/appendixes/column-size-decimal-digits-transfer-octet-length-and-display-size
     # 20 + s (the number of characters in the yyyy-mm-dd hh:mm:ss[.fff...] format, where s is the seconds precision).
     field.size = 27

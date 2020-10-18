@@ -1,3 +1,10 @@
+0.3.0
+  * Internal changes for Nim 1.4.
+  * Refactor to remove includes which also involved exposing some previously internal fields.
+  * Removed quitProcs.
+  * Errors/info reported by function calls now displays the proc and line the error occurs.
+  * This release no longer supports the `Time` type (use `DateTime` instead) due to an inability to convert to other formats.
+
 0.2.2
   * Added native support for GUID / uniqueidentifier fields.
   * Allow multiple dbq statements in a scope.

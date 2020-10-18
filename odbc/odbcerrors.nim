@@ -1,7 +1,7 @@
 import odbcsql, odbcreporting
 
 type
-  ODBCException* = ref object of Exception
+  ODBCException* = ref object of ValueError
   ODBCUnknownParameterException* = ref object of ODBCException
   ODBCUnsupportedTypeException* = ref object of ODBCException
   ODBCOverflowException* = ref object of ODBCException
@@ -87,6 +87,36 @@ proc toStr*(h: SqlHandle, handleType: TSqlSmallInt): string =
   elif handleType == SQL_HANDLE_DESC: result &= " (desc)"  
   else: result &= " (" & $handleType.int & ")"
 
+import os
+
+proc debugPrefix: string =
+  ## Report the first line number and proc in the call stack outside of the library source.
+  let entries = getStackTraceEntries()
+  const parentDirectory = currentSourcePath().parentDir
+  when not defined(odbcDebug):
+    const sourceDirs = [parentDirectory, parentDirectory.parentDir]
+
+  # Find first stack line outside of the current source directory.
+  var stackIdx: int
+  when not defined(odbcDebug):
+    for idx in countDown(entries.high, 0):
+      let
+        fn = $entries[idx].filename
+        dir = fn.parentDir
+      if dir notin sourceDirs:
+        stackIdx = idx
+        break
+  else:
+    # When debugging is enabled, the line number within the library is reported.
+    # We still don't want to include this proc or rptOnErr so we try to move 2
+    # levels up if possible.
+    stackIdx = max(0, entries.high - 2)
+  let
+    st = entries[stackIdx]
+    fnStr = $(st.filename)
+    debugPrefix = "ODBC [" & fnStr & "(" & $st.line & ") " & " " & $st.procname & "] "
+  debugPrefix
+
 proc rptOnErr*(rptState: var ODBCReportState, resp: TSqlSmallInt, callname: string, handle: SqlHandle = nil, handleType = SQL_HANDLE_ENV.TSqlSmallInt) =
   var doRpt: bool
   if rptState != nil:
@@ -103,9 +133,9 @@ proc rptOnErr*(rptState: var ODBCReportState, resp: TSqlSmallInt, callname: stri
       if resp == SQL_SUCCESS_WITH_INFO or resp == SQL_ERROR:
         msgDetails &= getDiagMsg(handle, handleType)
     else:
-      msgDetails = "<no handle/nil supplied>"
+      msgDetails = "<No handle/nil supplied>"
 
-    let rptStr = "ODBC call " & callname & " returned non-success: " & msgDetails
+    let rptStr = debugPrefix() & "ODBC call " & callname & " returned non-success: " & msgDetails
     when defined(odbcexceptonfail):
       raise newODBCException(rptStr)
     else:

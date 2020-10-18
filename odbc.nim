@@ -11,22 +11,27 @@
 import
   odbcsql,
   times,
-  hashes,
   tables,
   typetraits,
-  odbc / [odbctypes, odbcerrors, odbcreporting],
-  strformat
+  strutils
 
-export odbctypes, odbcreporting, odbcerrors
+when defined(odbcdebug):
+  import strformat
 
-# this import includes the handles module and also imports odbcerrors
-# TODO: Convert includes to imports.
-include
-  odbc/odbcconnections,
-  odbc/odbchandles,
-  odbc/odbcparams,
-  odbc/odbcjson,
-  odbc/odbcutils
+import
+  odbc/[
+    odbctypes,
+    odbcerrors,
+    odbcreporting,
+    odbcconnections,
+    odbcfields,
+    odbchandles,
+    odbcparams,
+    odbcjson,
+    odbcutils]
+
+export odbctypes, odbcreporting, odbcerrors, odbcconnections, odbcfields, odbcjson, odbcutils
+export odbcparams except readFromBuf, writeToBuf, bindParams
 
 type
   SQLQueryObj* = object
@@ -59,7 +64,7 @@ proc freeQuery*(qry: SQLQuery) =
   when defined(odbcdebug): echo &"Freeing query with handle {qry.handle}"
   freeStatementHandle(qry.handle, qry.con.reporting)
   qry.handle = nil
-  qry.params.freeParamBufs
+  qry.params.clear
   if qry.dataBuf != nil:
     dealloc(qry.dataBuf)
     qry.dataBuf = nil
@@ -156,9 +161,9 @@ proc fetchRow*(qry: SQLQuery, row: var SQLRow): bool =
 
       when defined(odbcdebug): echo &"Fetching: {colDetail.colType}, sql type: {colDetail.sqlType} ctype {colDetail.ctype} size {size} colSize {colDetail.size}"
 
-      var indicator: TSqlInteger  # buffer
+      var indicator: TSqlLen  # buffer
       res = SQLGetData( qry.handle, colIdx.SqlUSmallInt, colDetail.cType,
-                        qry.dataBuf, size.TSqlInteger, addr(indicator))
+                        qry.dataBuf, size.TSqlLen, addr(indicator))
       rptOnErr(qry.con.reporting, res, "SQLGetData", qry.handle, SQL_HANDLE_STMT.TSqlSmallInt)
       when defined(odbcdebug): echo &"SQLGetData returned {res}, with indicator: {indicator}"
 
@@ -270,10 +275,14 @@ proc getColDetails(qry: SQLQuery, colID: int): SQLField =
     colName: string = newString(buflen)
     nameLen: TSqlSmallInt
     sqlDataType: TSqlSmallInt
-    columnSize: SqlUInteger
+    columnSize: TSqlULen
     decimalDigits: TSqlSmallInt
     nullable: TSqlSmallInt
     retval = SQLDescribeCol(qry.handle, colID.TSqlSmallInt, colName.cstring, buflen, nameLen, sqlDataType, columnSize, decimalDigits, nullable)
+  
+  if columnSize == 0:
+    # The column size cannot be determined by the driver.
+    columnSize = sqlDataType.TSqlULen
 
   rptOnErr(qry.con.reporting, retval, "SQLDescribeCol", qry.handle, SQL_HANDLE_STMT.TSqlSmallInt)
   colName.setLen(nameLen)
@@ -283,7 +292,7 @@ proc getColDetails(qry: SQLQuery, colID: int): SQLField =
     result.colType = toSQLColumnType(sqlDataType)
     result.dataType = toDataType(result.colType)
     result.sqlType = sqlDataType
-    result.size = columnSize
+    result.size = columnSize.int
     result.digits = decimalDigits
     result.nullable = nullable != 0
     result.cType = result.colType.toCType
@@ -310,16 +319,16 @@ template openInternal(qry: var SQLQuery): TSqlSmallInt =
 
   var res: TSqlSmallInt
 
-  qry.bindParams
-
   if qry.prepare:
     # variables bound before prepare may allow query plans to be influenced by their content
     res = SQLPrepareW(qry.handle, newWideCString(qry.odbcStatement), SQL_NTS)  # worth passing len or let SQL do it?
     rptOnErr(qry.con.reporting, res, "Prepare Query, SQLPrepare", qry.handle, SQL_HANDLE_STMT.TSqlSmallInt)
 
+    qry.bindParams
     res = SQLExecute(qry.handle)
     rptOnErr(qry.con.reporting, res, "Open Query, SQLExecute", qry.handle, SQL_HANDLE_STMT.TSqlSmallInt)
   else:
+    qry.bindParams
     res = SQLExecDirectW(qry.handle, newWideCString(qry.odbcStatement), SQL_NTS)
     rptOnErr(qry.con.reporting, res, "Direct Open SQLExecuteDirect", qry.handle, SQL_HANDLE_STMT.TSqlSmallInt)
   # read column info

@@ -2,6 +2,7 @@ import times, odbcsql, typetraits, tables, strutils, unicode, odbcerrors
 
 const
   nullValue* = ""
+  ms = 1_000_000
 
 # Note:
 # If an application working with a Unicode driver binds to SQL_CHAR,
@@ -49,7 +50,7 @@ proc toSQLDataType*(t: typeDesc): SQLDataType =
   elif t is int64: result = dtInt64
   elif t is bool: result = dtBool
   elif t is float: result = dtFloat
-  elif t is Time: result = dtTime
+  elif t is DateTime: result = dtTime
   elif t is SQLBinaryData: result = dtBinary
   else:
     result = dtNull
@@ -62,7 +63,7 @@ proc toSQLColumnType*(t: typeDesc): SQLColType =
   elif t is int64: result = ctBigInt
   elif t is bool: result = ctBit
   elif t is float: result = ctFloat
-  elif t is Time or t is TimeInterval: result = ctTime
+  elif t is DateTime or t is TimeInterval: result = ctTime
   elif t is SQLBinaryData: result = ctBinary
   else:
     result = ctUnknown
@@ -141,7 +142,7 @@ proc toCType*(t: typeDesc): TSqlSmallInt =
   elif t is int64: result = SQL_C_SBIGINT
   elif t is bool: result = SQL_C_BIT
   elif t is float: result = SQL_C_DOUBLE
-  elif t is Time or t is TimeInterval: result = SQL_C_TYPE_TIMESTAMP
+  elif t is DateTime or t is TimeInterval: result = SQL_C_TYPE_TIMESTAMP
   elif t is SQLBinaryData: result = SQL_C_BINARY
   elif t is GuidData: result = SQL_C_GUID
   else:
@@ -154,7 +155,7 @@ proc toSqlType*(t: typeDesc): TSqlSmallInt =
   elif t is int64: result = SQL_BIGINT
   elif t is bool: result = SQL_BIT
   elif t is float: result = SQL_FLOAT
-  elif t is Time or t is TimeInterval: result = SQL_TYPE_TIMESTAMP
+  elif t is DateTime or t is TimeInterval: result = SQL_TYPE_TIMESTAMP
   elif t is SQLBinaryData: result = SQL_BINARY
   else:
     result = SQL_UNKNOWN_TYPE
@@ -177,28 +178,43 @@ proc toSqlType*(data: SQLData): TSqlSmallInt =
 
 proc initSQLData*(kind: SQLDataType = dtNull): SQLData = SQLData(kind: kind)
 
-proc initSQLData*[T](inputData: T): SQLData =
-  ## Initialise a new `SQLData` based on the type of `inputData`.
-  when T is int:
-    SQLData(kind: dtInt, intVal: inputData)
-  elif T is int64:
-    SQLData(kind: dtInt64, int64Val: inputData)
-  elif T is string:
-    SQLData(kind: dtString, strVal: inputData)
-  elif T is bool:
-    SQLData(kind: dtBool, boolVal: inputData)
-  elif T is float:
-    SQLData(kind: dtFloat, floatVal: inputData)
-  elif T is TimeInterval:
-    SQLData(kind: dtTime, timeVal: inputData)
-  elif T is Time:
-    SQLData(kind: dtTime, timeVal: inputData.toTimeInterval)
-  elif T is SQLBinaryData:
-    SQLData(kind: dtBinary, binVal: inputData)
-  elif T is GuidData:
-    SQLData(kind: dtGuid, guidVal: inputData)
-  else:
-    raise newODBCUnsupportedTypeException($T.name)
+proc distributeNanoseconds*(interval: var TimeInterval) =
+  ## Populates fractional components milliseconds and microseconds from nanoseconds,
+  ## and trims nanoseconds.
+  let
+    ns = interval.nanoseconds
+    msRemaining = ns mod ms
+  interval.milliseconds = ns div ms
+  interval.microseconds = msRemaining div 1_000
+  interval.nanoseconds = msRemaining mod 1_000
+
+proc distributeNanoseconds*(interval: TimeInterval): TimeInterval =
+  result = interval
+  result.distributeNanoseconds
+
+template stuffNanoseconds*(interval: TimeInterval): int =
+  interval.nanoseconds + interval.microseconds * 1_000 + interval.milliseconds * ms
+
+proc initSQLData*(inputData: int): SQLData = SQLData(kind: dtInt, intVal: inputData)
+proc initSQLData*(inputData: int64): SQLData = SQLData(kind: dtInt64, int64Val: inputData)
+proc initSQLData*(inputData: string): SQLData = SQLData(kind: dtString, strVal: inputData)
+proc initSQLData*(inputData: bool): SQLData = SQLData(kind: dtBool, boolVal: inputData)
+proc initSQLData*(inputData: float): SQLData = SQLData(kind: dtFloat, floatVal: inputData)
+proc initSQLData*(inputData: DateTime): SQLData =
+  var ti: TimeInterval
+  ti.nanoseconds = inputData.nanosecond
+  ti.distributeNanoseconds
+  ti.seconds = inputData.second
+  ti.minutes = inputData.minute
+  ti.hours = inputData.hour
+  ti.days = inputData.monthDay
+  #ti.weeks = inputData.we
+  ti.months = int(inputData.month)
+  ti.years = inputData.year
+  SQLData(kind: dtTime, timeVal: ti)
+proc initSQLData*(inputData: TimeInterval): SQLData = SQLData(kind: dtTime, timeVal: inputData)
+proc initSQLData*(inputData: SQLBinaryData): SQLData = SQLData(kind: dtBinary, binVal: inputData)
+proc initSQLData*(inputData: GuidData): SQLData = SQLData(kind: dtGuid, guidVal: inputData)
 
 proc `$`*(guid: GuidData): string =
   template clock(value: untyped): string = value.toHex
@@ -404,3 +420,4 @@ converter toInt64*(sqlData: SQLData): int64 = sqlData.asInt64
 converter toTimeInterval*(sqlData: SQLData): TimeInterval = sqlData.asTimeInterval
 
 proc `$`*(handle: SqlHStmt): string = handle.repr
+

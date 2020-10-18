@@ -115,21 +115,22 @@ for conDetails in connections.mitems:
       check not res.hasField("doota")
 
     test "Times":
-      let curTime = getTime()
+      let curTime = now()
       qry.statement = "SELECT ?a"
       qry.params["a"] = curTime
       res = qry.executeFetch
-      let timeVal = res[0][0].timeVal
-      let curTimeInterval =
-        when defined(odbcRawTimes):
-          curTime.toTimeInterval
-        else:
-          # toTimeInterval doesn't set up milli/microseconds for us so for comparison we do this manually.
-          curTime.toTimeInterval.distributeNanoseconds
-      echo curTimeInterval
-      # Here we can directly compare to the nanosecond level because the date time value
-      # is not being converted and so does not lose precision.
-      check timeVal == curTimeInterval
+      let returnedTime = res[0][0].timeVal
+
+      # Note:
+      # Depending on the database's precision, milliseconds and below may be zero or
+      # a slightly different value to the one passed to the query. In this case a direct
+      # comparison will fail.
+      # The following performs checks up to the nearest second.
+
+      check:
+        returnedTime.years == curTime.year and returnedTime.months == curTime.month.int and
+        returnedTime.days == curTime.monthday.int and returnedTime.minutes == curTime.minute and
+        returnedTime.seconds == curTime.second
 
     test "Nulls":
       qry.statement = "SELECT ?a"
@@ -169,12 +170,7 @@ for conDetails in connections.mitems:
       SELECT * FROM #Temp
       DROP TABLE #Temp
       """
-      let curTime = 
-        when defined(odbcRawTimes):
-          getTime().toTimeInterval
-        else:
-          # toTimeInterval doesn't set up milli/microseconds for us so for comparison we do this manually.
-          getTime().toTimeInterval.distributeNanoseconds
+      let curTime = now()
       qry.params["name"] = "testy"
       qry.params["textval"] = " testing "
       qry.params["intval"] = 99
@@ -187,19 +183,13 @@ for conDetails in connections.mitems:
       check res[0][0] == "testy"
       check res[0][1] == " testing "
       check res[0][2] == 99
-      # Depending on the database's precision, milliseconds and below may be zero or
-      # a slightly different value to the one passed to the query. In this case a direct
-      # comparison will fail. Set the following to `false` to perform checks up to the 
-      # nearest second.
-      when true:
-        # Comparison up to nanosecond precision.
-        check res.data("timeVal", 0).timeVal == curTime
-      else:
-        # Checking up to one second difference from input.
-        let timeDiff = curTime - res.data("timeVal").timeVal
-        check:
-          timeDiff.years == 0 and timeDiff.months == 0 and timeDiff.weeks == 0
-          timeDiff.days == 0 and timeDiff.minutes == 0 and timeDiff.seconds < 1
+      # See above note on time precision.
+      let returnedTime = res.data("timeVal").timeVal
+
+      check:
+        returnedTime.years == curTime.year and returnedTime.months == curTime.month.int and
+        returnedTime.days == curTime.monthday.int and returnedTime.minutes == curTime.minute and
+        returnedTime.seconds == curTime.second
 
       check res[0][4] == true
 
@@ -218,7 +208,7 @@ for conDetails in connections.mitems:
       qry.params["a"] = ""  # NOTE: This gets converted to " " :(
       qry.params["b"] = "test"
       var res = qry.executeFetch
-      # note: to allow the empty (zero length) C string to be bound,
+      # Note: to allow the empty (zero length) C string to be bound,
       # we need to simply bind it to a parameter of at lease size 1.
       # this is an issue in many database implementations
       check res[0][0] == "* *"
@@ -409,4 +399,3 @@ for conDetails in connections.mitems:
       check res[0][0].asInt == 123456
       check res[0][0].asInt64 == 123456
       check res[0][0].asFloat == 123456.0
-
