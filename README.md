@@ -263,10 +263,10 @@ Note that the statement is set only once, and in each example the opening/closin
         echo "Item data: ", data
         
     var results = qry.executeFetch
-    echo results.len, " total row(s)"                   # outputs "1 total row(s)
-    echo "First field's data is ", results[0][0].data   # outputs "First field's data is A"
+    echo results.len, " total row(s)"             # outputs "1 total row(s)
+    echo "First field's data is ", results[0][0]  # outputs "First field's data is A"
     for row in results:
-      echo row.len, " fields in this row"               # outputs "3 fields in this row"
+      echo row.len, " fields in this row"         # outputs "3 fields in this row"
 
 
 ## Parameters

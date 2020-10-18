@@ -43,6 +43,10 @@ iterator fields*(results: SQLResults): SQLField =
     yield results.colFields[idx]
     idx.inc
 
+iterator items*(results: SQLResults): SQLRow =
+  for idx in 0 ..< results.rows.len:
+    yield results.rows[idx]
+
 proc fields*(results: SQLResults, fieldName: string): SQLField =
   let idx = results.fieldnameIndex.getOrDefault(fieldName.toLowerAscii, -1)
   if idx >= 0:
