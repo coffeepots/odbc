@@ -374,11 +374,8 @@ proc setupParams*(params: var SQLParams, sqlStatement: string, paramPrefix: stri
 
     # check for existing parameter with this name
     if not params.names.hasKey(paramName):
-      # add parameter
-      var newParam: SQLValue
       # set up field, type specified by user
-      newParam.field = newSQLField()
-      params.items.add(newParam)
+      params.items.add(SQLValue(field: newSQLField()))
       params.names[paramName] = params.high
       when defined(odbcdebug): echo &"Found new param: \"{paramName}\""
 
