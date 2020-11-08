@@ -111,11 +111,14 @@ proc debugPrefix: string =
     # We still don't want to include this proc or rptOnErr so we try to move 2
     # levels up if possible.
     stackIdx = max(0, entries.high - 2)
-  let
-    st = entries[stackIdx]
-    fnStr = $(st.filename)
-    debugPrefix = "ODBC [" & fnStr & "(" & $st.line & ") " & " " & $st.procname & "] "
-  debugPrefix
+  if stackIdx < entries.len:
+    let
+      st = entries[stackIdx]
+      fnStr = $(st.filename)
+      debugPrefix = "ODBC [" & fnStr & "(" & $st.line & ") " & " " & $st.procname & "] "
+    debugPrefix
+  else:
+    ""
 
 proc rptOnErr*(rptState: var ODBCReportState, resp: TSqlSmallInt, callname: string, handle: SqlHandle = nil, handleType = SQL_HANDLE_ENV.TSqlSmallInt) =
   var doRpt: bool
