@@ -2,6 +2,9 @@ import odbcsql, odbcerrors, strutils, odbchandles, odbcreporting
 when defined(odbcUseQuitProc):
   import tables, strformat
 
+when defined(odbcdebug):
+  import strformat
+
 type
   ODBCServerType* = enum SQLSever,ApacheDrill
   ODBCTransactionMode = enum tmAuto, tmManual

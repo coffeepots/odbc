@@ -294,7 +294,7 @@ For example:
 
 You can convert results, rows or individual SQLValue objects to JSON format using the toJson proc:
 
-    qry.statement = "SELECT 'A', 'B', 'C'
+    qry.statement = "SELECT 'A', 'B', 'C'"
     var results = qry.executeFetch
 
     from json import pretty # This allows us to convert json to human readable form for the echo
